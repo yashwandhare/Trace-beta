@@ -56,6 +56,17 @@ import dagger.hilt.components.SingletonComponent
 import dagger.multibindings.IntoSet
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.remember
+import com.google.ai.edge.gallery.ui.voiceinput.PttOverlay
+import com.google.ai.edge.gallery.voice.VoiceManager
+import com.google.ai.edge.gallery.voice.IntentRouter
+import com.google.ai.edge.gallery.voice.IntentType
+import com.google.ai.edge.gallery.filefetch.FileFetcher
+import com.google.ai.edge.gallery.ui.common.chat.ChatMessageAudioClip
+import com.google.ai.edge.gallery.ui.common.chat.ChatMessageText
+import com.google.ai.edge.gallery.ui.common.chat.ChatSide
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // AI Chat.
@@ -109,9 +120,22 @@ class LlmChatTask @Inject constructor() : CustomTask {
   override fun MainScreen(data: Any) {
     val myData = data as CustomTaskDataForBuiltinTask
     val viewModel: LlmChatViewModel = hiltViewModel()
-    LaunchedEffect(task) { viewModel.loadSystemPrompt(task) }
+    
+    val context = LocalContext.current
+    LaunchedEffect(task) { 
+      viewModel.loadSystemPrompt(task)
+      viewModel.initTts(context)
+    }
+    
     val uiSystemPrompt by viewModel.uiSystemPrompt.collectAsState()
     val systemPromptUpdatedMessage = stringResource(R.string.system_prompt_updated)
+
+    val coroutineScope = rememberCoroutineScope()
+    val voiceViewModel: com.google.ai.edge.gallery.ui.common.textandvoiceinput.HoldToDictateViewModel = hiltViewModel()
+    val intentRouter = remember { IntentRouter() }
+
+    val voiceUiState by voiceViewModel.uiState.collectAsState()
+
     LlmChatScreen(
       modelManagerViewModel = myData.modelManagerViewModel,
       navigateUp = myData.onNavUp,
@@ -126,6 +150,9 @@ class LlmChatTask @Inject constructor() : CustomTask {
           newPrompt = newPrompt,
           systemPromptUpdatedMessage = systemPromptUpdatedMessage,
         )
+      },
+      composableBelowMessageList = { model ->
+        // PttOverlay is now built into MessageInputText
       },
       emptyStateComposable = {
         Box(modifier = Modifier.fillMaxSize()) {

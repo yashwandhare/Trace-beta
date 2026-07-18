@@ -50,24 +50,40 @@ fun PttOverlay(
   // Local state — Dev A can override by passing externalPttState.
   var localState by remember { mutableStateOf(PttState.IDLE) }
   val state = externalPttState ?: localState
-
-  Box(
-    modifier = modifier.fillMaxSize(),
-    contentAlignment = Alignment.BottomCenter,
-  ) {
-    PushToTalkButton(
-      state = state,
-      onPressStart = {
-        if (externalPttState == null) localState = PttState.LISTENING
-        onStartRecording()
-      },
-      onPressEnd = {
-        if (externalPttState == null) localState = PttState.PROCESSING
-        onStopRecording()
-        // Auto-reset to IDLE after stub delay when no external state drives us.
-        if (externalPttState == null) localState = PttState.IDLE
-      },
-      modifier = Modifier.padding(bottom = 88.dp), // sit above the text input bar
-    )
+  val context = androidx.compose.ui.platform.LocalContext.current
+  
+  val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+    androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+  ) { isGranted: Boolean ->
+    if (isGranted) {
+      if (externalPttState == null) localState = PttState.LISTENING
+      onStartRecording()
+    }
   }
+
+  PushToTalkButton(
+    state = state,
+    size = 40.dp,
+    onClick = {
+      val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+        context,
+        android.Manifest.permission.RECORD_AUDIO
+      ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+      
+      if (!hasPermission) {
+        permissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+      } else {
+        if (state == PttState.IDLE) {
+          if (externalPttState == null) localState = PttState.LISTENING
+          onStartRecording()
+        } else if (state == PttState.LISTENING) {
+          if (externalPttState == null) localState = PttState.PROCESSING
+          onStopRecording()
+          // Auto-reset to IDLE after stub delay when no external state drives us.
+          if (externalPttState == null) localState = PttState.IDLE
+        }
+      }
+    },
+    modifier = modifier.padding(end = 4.dp)
+  )
 }
