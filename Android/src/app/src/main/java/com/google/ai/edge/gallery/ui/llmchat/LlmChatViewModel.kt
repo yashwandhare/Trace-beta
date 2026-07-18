@@ -163,6 +163,7 @@ open class LlmChatViewModelBase(
       }
 
       var firstRun = true
+      var ttsBuffer = ""
       val start = System.currentTimeMillis()
 
       try {
@@ -249,6 +250,16 @@ open class LlmChatViewModelBase(
                     partialContent = partialResult,
                     latencyMs = latencyMs.toFloat(),
                   )
+                  ttsBuffer += partialResult
+                  val punctuationRegex = Regex("(?<=[.!?])\\s+|(?<=[.!?])$")
+                  val sentences = ttsBuffer.split(punctuationRegex)
+                  if (sentences.size > 1) {
+                    val sentenceToSpeak = ttsBuffer.substring(0, ttsBuffer.lastIndexOf(sentences.last()))
+                    if (sentenceToSpeak.isNotBlank()) {
+                      ttsManager?.speak(sentenceToSpeak.trim(), android.speech.tts.TextToSpeech.QUEUE_ADD)
+                    }
+                    ttsBuffer = sentences.last()
+                  }
                 }
               }
 
@@ -259,6 +270,10 @@ open class LlmChatViewModelBase(
               }
 
               if (done) {
+                if (ttsBuffer.isNotBlank()) {
+                  ttsManager?.speak(ttsBuffer.trim(), android.speech.tts.TextToSpeech.QUEUE_ADD)
+                  ttsBuffer = ""
+                }
                 val finalLastMessage = getLastMessage(model = model)
                 if (finalLastMessage?.type == ChatMessageType.THINKING) {
                   val thinkingMsg = finalLastMessage as ChatMessageThinking
@@ -275,12 +290,6 @@ open class LlmChatViewModelBase(
                         ),
                       type = ChatMessageType.THINKING,
                     )
-                  }
-                }
-                if (finalLastMessage?.type == ChatMessageType.TEXT) {
-                  val textMsg = finalLastMessage as ChatMessageText
-                  if (textMsg.content.isNotEmpty()) {
-                    ttsManager?.speak(textMsg.content)
                   }
                 }
                 setInProgress(false)

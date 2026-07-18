@@ -143,6 +143,8 @@ import kotlinx.coroutines.launch
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.google.ai.edge.gallery.ui.common.textandvoiceinput.HoldToDictateViewModel
 import com.google.ai.edge.gallery.ui.voiceinput.PttOverlay
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 
 private const val TAG = "AGMessageInputText"
 
@@ -197,6 +199,27 @@ fun MessageInputText(
   LaunchedEffect(voiceUiState.recognizedText) {
     if (voiceUiState.recognizing) {
       onValueChanged(voiceUiState.recognizedText)
+    }
+  }
+
+  val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+    androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+  ) { isGranted: Boolean ->
+    if (isGranted) {
+      voiceViewModel.startSpeechRecognition(
+        onDone = { text ->
+          if (text.isNotBlank()) {
+            onSendMessage(
+              listOf(com.google.ai.edge.gallery.ui.common.chat.ChatMessageText(
+                content = text.trim(), 
+                side = com.google.ai.edge.gallery.ui.common.chat.ChatSide.USER
+              ))
+            )
+            onValueChanged("")
+          }
+        },
+        onAmplitudeChanged = {}
+      )
     }
   }
   val scope = rememberCoroutineScope()
@@ -747,30 +770,54 @@ fun MessageInputText(
                 // Send button.
                 else {
                   Row(verticalAlignment = Alignment.CenterVertically) {
-                    PttOverlay(
-                      onStartRecording = {
-                        voiceViewModel.startSpeechRecognition(
-                          onDone = { text ->
-                            if (text.isNotBlank()) {
-                              onSendMessage(
-                                createMessagesToSend(
-                                  pickedImages = pickedImages,
-                                  audioClips = pickedAudioClips,
-                                  text = text.trim(),
-                                )
-                              )
-                              pickedImages = listOf()
-                              pickedAudioClips = listOf()
-                              onValueChanged("")
-                            }
-                          },
-                          onAmplitudeChanged = {}
+                    Box(
+                      contentAlignment = Alignment.Center,
+                      modifier = Modifier
+                        .size(48.dp)
+                        .shadow(elevation = 2.dp, CircleShape)
+                        .clip(CircleShape)
+                        .background(
+                          if (voiceUiState.recognizing) Color(0xFFD32F2F) else getTaskIconColor(task = task)
                         )
-                      },
-                      onStopRecording = {
-                        voiceViewModel.stopSpeechRecognition()
-                      }
-                    )
+                        .pointerInput(Unit) {
+                          detectTapGestures(
+                            onPress = {
+                              val hasPerm = ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                              if (!hasPerm) {
+                                permissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                              } else {
+                                voiceViewModel.startSpeechRecognition(
+                                  onDone = { text ->
+                                    if (text.isNotBlank()) {
+                                      onSendMessage(
+                                        createMessagesToSend(
+                                          pickedImages = pickedImages,
+                                          audioClips = pickedAudioClips,
+                                          text = text.trim(),
+                                        )
+                                      )
+                                      pickedImages = listOf()
+                                      pickedAudioClips = listOf()
+                                      onValueChanged("")
+                                    }
+                                  },
+                                  onAmplitudeChanged = {}
+                                )
+                                tryAwaitRelease()
+                                voiceViewModel.stopSpeechRecognition()
+                              }
+                            }
+                          )
+                        }
+                    ) {
+                      Icon(
+                        imageVector = Icons.Rounded.Mic,
+                        contentDescription = "Tap to speak",
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(28.dp),
+                      )
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
                     IconButton(
                       enabled =
                         !inProgress &&
