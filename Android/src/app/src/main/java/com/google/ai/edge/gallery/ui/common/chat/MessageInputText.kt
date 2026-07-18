@@ -256,6 +256,42 @@ fun MessageInputText(
   LaunchedEffect(pickedImages) { onPickedImagesChanged(pickedImages) }
 
   LaunchedEffect(pickedAudioClips) { onPickedAudioClipsChanged(pickedAudioClips) }
+  
+  val mediaProjectionLauncher = rememberLauncherForActivityResult(
+    androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+  ) { result ->
+    if (result.resultCode == android.app.Activity.RESULT_OK && result.data != null) {
+      val intent = android.content.Intent(context, com.google.ai.edge.gallery.ocr.ScreenCaptureService::class.java).apply {
+        putExtra(com.google.ai.edge.gallery.ocr.ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
+        putExtra(com.google.ai.edge.gallery.ocr.ScreenCaptureService.EXTRA_RESULT_DATA, result.data)
+      }
+      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+          context.startForegroundService(intent)
+      } else {
+          context.startService(intent)
+      }
+    }
+  }
+
+  LaunchedEffect(Unit) {
+      com.google.ai.edge.gallery.ocr.ScreenExplainManager.ocrResults.collect { ocrText ->
+          if (ocrText.isNotBlank()) {
+              onSendMessage(
+                  listOf(com.google.ai.edge.gallery.ui.common.chat.ChatMessageText(
+                      content = "The screen contains this text:\n$ocrText\n\nPlease explain it.",
+                      side = com.google.ai.edge.gallery.ui.common.chat.ChatSide.USER
+                  ))
+              )
+          } else {
+              onSendMessage(
+                  listOf(com.google.ai.edge.gallery.ui.common.chat.ChatMessageText(
+                      content = "I couldn't read the screen.",
+                      side = com.google.ai.edge.gallery.ui.common.chat.ChatSide.USER
+                  ))
+              )
+          }
+      }
+  }
 
   // Permission request when taking picture.
   val takePicturePermissionLauncher =
@@ -767,6 +803,9 @@ fun MessageInputText(
                                     text = text.trim(),
                                   )
                                 )
+                              } else if (intentResult.type == com.google.ai.edge.gallery.voice.IntentType.SCREEN_EXPLAIN) {
+                                val projectionManager = context.getSystemService(android.content.Context.MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
+                                mediaProjectionLauncher.launch(projectionManager.createScreenCaptureIntent())
                               }
                               pickedImages = listOf()
                               pickedAudioClips = listOf()

@@ -2,7 +2,8 @@ package com.google.ai.edge.gallery.voice
 
 enum class IntentType {
     LLM_CHAT,
-    FILE_FETCH
+    FILE_FETCH,
+    SCREEN_EXPLAIN
 }
 
 data class IntentResult(
@@ -45,6 +46,16 @@ class IntentRouter(private val context: android.content.Context) {
             }
             
             return intentResult
+        }
+        
+        if (lowerText.startsWith("explain screen") || 
+            lowerText.startsWith("what is on my screen") || 
+            lowerText.startsWith("what's on my screen") ||
+            lowerText.startsWith("read screen")) {
+            return IntentResult(
+                type = IntentType.SCREEN_EXPLAIN,
+                query = inputText
+            )
         }
         
         // Otherwise, route to normal LLM chat
