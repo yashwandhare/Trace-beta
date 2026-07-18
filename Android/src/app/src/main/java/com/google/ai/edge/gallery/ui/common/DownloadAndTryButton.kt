@@ -79,7 +79,7 @@ import com.google.ai.edge.gallery.data.Model
 import com.google.ai.edge.gallery.data.ModelDownloadStatusType
 import com.google.ai.edge.gallery.data.RuntimeType
 import com.google.ai.edge.gallery.data.Task
-import com.google.ai.edge.gallery.ui.common.tos.GemmaTermsOfUseDialog
+
 import com.google.ai.edge.gallery.ui.common.tos.TosViewModel
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import com.google.ai.edge.gallery.ui.modelmanager.TokenRequestResultType
@@ -132,7 +132,6 @@ fun DownloadAndTryButton(
   modelManagerViewModel: ModelManagerViewModel,
   onClicked: () -> Unit,
   modifier: Modifier = Modifier,
-  tosViewModel: TosViewModel = hiltViewModel(),
   modifierWhenExpanded: Modifier = Modifier,
   compact: Boolean = false,
   canShowTryIt: Boolean = true,
@@ -144,7 +143,6 @@ fun DownloadAndTryButton(
   var showAgreementAckSheet by remember { mutableStateOf(false) }
   var showErrorDialog by remember { mutableStateOf(false) }
   var showMemoryWarning by remember { mutableStateOf(false) }
-  var showGemmaTermsOfUseDialog by remember { mutableStateOf(false) }
   var downloadStarted by remember { mutableStateOf(false) }
   val sheetState = rememberModalBottomSheetState()
 
@@ -260,7 +258,7 @@ fun DownloadAndTryButton(
       if (needToDownloadFirst) {
         downloadStarted = true
         // For HuggingFace urls
-        if (model.url.startsWith("https://huggingface.co")) {
+        if (false) {
           checkingToken = true
 
           // Check if the url needs auth.
@@ -372,16 +370,7 @@ fun DownloadAndTryButton(
           return@Button
         }
 
-        // Check TOS before downloading.
-        if (
-          model.url.startsWith("https://dl.google.com/google-ai-edge-gallery/") &&
-            MODEL_NAMES_TO_SHOW_GEMMA_LICENSES.contains(model.name) &&
-            !tosViewModel.getIsGemmaTermsOfUseAccepted()
-        ) {
-          showGemmaTermsOfUseDialog = true
-        } else {
-          checkMemoryAndClickDownloadButton()
-        }
+        checkMemoryAndClickDownloadButton()
       },
     ) {
       val textColor =
@@ -576,14 +565,5 @@ fun DownloadAndTryButton(
     )
   }
 
-  if (showGemmaTermsOfUseDialog) {
-    GemmaTermsOfUseDialog(
-      onTosAccepted = {
-        showGemmaTermsOfUseDialog = false
-        tosViewModel.acceptGemmaTermsOfUse()
-        checkMemoryAndClickDownloadButton()
-      },
-      onCancel = { showGemmaTermsOfUseDialog = false },
-    )
-  }
+
 }

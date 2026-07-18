@@ -184,7 +184,7 @@ data class AllowedModel(
           .toMutableList()
     }
 
-    var learnMoreUrl = "https://huggingface.co/${modelId}"
+    var learnMoreUrl = "https://ai.google.dev/gemma"
 
     if (runtimeType == RuntimeType.AICORE) {
       downloadUrl = ""
@@ -195,7 +195,6 @@ data class AllowedModel(
     var showBenchmarkButton = true
     var showRunAgainButton = true
     if (isLlmModel) {
-      showBenchmarkButton = false
       showRunAgainButton = false
     }
     return Model(

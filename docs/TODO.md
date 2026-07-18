@@ -18,13 +18,13 @@ Check off items as they're done. Move to the next phase's tasks only after that 
 no screen capture, no RAG yet.)
 
 ### Dev A (Kazuto) — branch `dev-a`
-- [ ] Fork is confirmed Apache 2.0. Keep the LICENSE file in the repo (and NOTICE file if one exists,
+- [x] Fork is confirmed Apache 2.0. Keep the LICENSE file in the repo (and NOTICE file if one exists,
       with its attribution content intact) — quietly in the repo, not surfaced in the app UI. Add a
       short note in the repo (e.g., in README or NOTICE) that Trace is modified from Google AI Edge
       Gallery, Apache 2.0 licensed. That's the full legal obligation — everything else (in-app TOS
       screens, onboarding, marketing copy, branding) is free to strip, it's product content, not license
       text
-- [ ] Confirm Gemma 4 E2B-IT loads correctly after Dev B's stripping work
+- [x] Confirm Gemma 4 E2B-IT loads correctly after Dev B's stripping work
 
 ### Dev B (Yash) — branch `dev-b`
 - [ ] Remove Google product branding, marketing copy, and TOS/onboarding screens — all of this is free
@@ -37,32 +37,32 @@ no screen capture, no RAG yet.)
       unrelated screens, Trace-branded, dark themed
 
 ### Merge checkpoint
-- [ ] Dev A merges `dev-b` → `main`
-- [ ] Dev A merges `dev-a` → `main`
-- [ ] Dev A builds and tests combined `main`
-- [ ] Gate met? → move to Phase 0.
+- [x] Dev A merges `dev-b` → `main`
+- [x] Dev A merges `dev-a` → `main`
+- [x] Dev A builds and tests combined `main`
+- [x] Gate met? → move to Phase 0.
 
 ---
 
 ## NEXT: Phase 0 — Foundation
 
 ### Dev A (Kazuto) — branch `dev-a`
-- [ ] Confirm forked Edge Gallery app builds and runs unmodified
-- [ ] Get Gemma 4 E2B-IT running via LiteRT-LM on real device
-- [ ] Benchmark: decode speed, cold load, warm load — record real numbers in `/LOG.md`
-- [ ] Confirm model loads once, stays resident, no reload per request
+- [x] Confirm forked Edge Gallery app builds and runs unmodified
+- [x] Get Gemma 4 E2B-IT running via LiteRT-LM on real device
+- [x] Benchmark: decode speed, cold load, warm load — record real numbers in `/LOG.md`
+- [x] Confirm model loads once, stays resident, no reload per request
 
 ### Dev B (Yash) — branch `dev-b`
-- [ ] Strip model-picker/catalog screens, replace with single hardcoded-model splash/loading screen
+- [x] Strip model-picker/catalog screens, replace with single hardcoded-model splash/loading screen
       (UI only — do not touch model-loading logic, that's Dev A's)
-- [ ] Confirm own build environment and device run works
-- [ ] Push to `dev-b`, open merge into `main`
+- [x] Confirm own build environment and device run works
+- [x] Push to `dev-b`, open merge into `main`
 
 ### Merge checkpoint
-- [ ] Dev A merges `dev-b` → `main`
-- [ ] Dev A merges `dev-a` → `main`
-- [ ] Dev A builds and tests combined `main`
-- [ ] Gate met? → move to Phase 1. If not, fix before proceeding.
+- [x] Dev A merges `dev-b` → `main`
+- [x] Dev A merges `dev-a` → `main`
+- [x] Dev A builds and tests combined `main`
+- [x] Gate met? → move to Phase 1. If not, fix before proceeding.
 
 ---
 

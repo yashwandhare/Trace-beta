@@ -62,6 +62,19 @@ open class LlmChatViewModelBase(
   private val _uiSystemPrompt = MutableStateFlow("")
   val uiSystemPrompt = _uiSystemPrompt.asStateFlow()
 
+  private var ttsManager: com.google.ai.edge.gallery.voice.TtsManager? = null
+
+  fun initTts(context: android.content.Context) {
+      if (ttsManager == null) {
+          ttsManager = com.google.ai.edge.gallery.voice.TtsManager(context)
+      }
+  }
+
+  override fun onCleared() {
+      super.onCleared()
+      ttsManager?.shutdown()
+  }
+
   /**
    * Sets the system prompt in the UI.
    *
@@ -150,6 +163,7 @@ open class LlmChatViewModelBase(
       }
 
       var firstRun = true
+      var ttsBuffer = ""
       val start = System.currentTimeMillis()
 
       try {
@@ -236,6 +250,16 @@ open class LlmChatViewModelBase(
                     partialContent = partialResult,
                     latencyMs = latencyMs.toFloat(),
                   )
+                  ttsBuffer += partialResult
+                  val punctuationRegex = Regex("(?<=[.!?])\\s+|(?<=[.!?])$")
+                  val sentences = ttsBuffer.split(punctuationRegex)
+                  if (sentences.size > 1) {
+                    val sentenceToSpeak = ttsBuffer.substring(0, ttsBuffer.lastIndexOf(sentences.last()))
+                    if (sentenceToSpeak.isNotBlank()) {
+                      ttsManager?.speak(sentenceToSpeak.trim(), android.speech.tts.TextToSpeech.QUEUE_ADD)
+                    }
+                    ttsBuffer = sentences.last()
+                  }
                 }
               }
 
@@ -246,6 +270,10 @@ open class LlmChatViewModelBase(
               }
 
               if (done) {
+                if (ttsBuffer.isNotBlank()) {
+                  ttsManager?.speak(ttsBuffer.trim(), android.speech.tts.TextToSpeech.QUEUE_ADD)
+                  ttsBuffer = ""
+                }
                 val finalLastMessage = getLastMessage(model = model)
                 if (finalLastMessage?.type == ChatMessageType.THINKING) {
                   val thinkingMsg = finalLastMessage as ChatMessageThinking

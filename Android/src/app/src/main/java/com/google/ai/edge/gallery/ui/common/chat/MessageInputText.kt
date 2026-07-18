@@ -140,6 +140,11 @@ import java.io.FileInputStream
 import java.util.concurrent.Executors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.google.ai.edge.gallery.ui.common.textandvoiceinput.HoldToDictateViewModel
+import com.google.ai.edge.gallery.ui.voiceinput.PttOverlay
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 
 private const val TAG = "AGMessageInputText"
 
@@ -179,6 +184,7 @@ fun MessageInputText(
   showMcpPicker: Boolean = false,
   showImagePicker: Boolean = false,
   showAudioPicker: Boolean = false,
+  voiceButton: @Composable () -> Unit = {},
   showStopButtonWhenInProgress: Boolean = false,
   onImageLimitExceeded: () -> Unit = {},
   onModelNotSupportImage: () -> Unit = {},
@@ -186,6 +192,16 @@ fun MessageInputText(
 ) {
   val context = LocalContext.current
   val lifecycleOwner = LocalLifecycleOwner.current
+
+  val voiceViewModel: HoldToDictateViewModel = hiltViewModel()
+  val voiceUiState by voiceViewModel.uiState.collectAsState()
+
+  LaunchedEffect(voiceUiState.recognizedText) {
+    if (voiceUiState.recognizing) {
+      onValueChanged(voiceUiState.recognizedText)
+    }
+  }
+
   val scope = rememberCoroutineScope()
   val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
   var showAddContentMenu by remember { mutableStateOf(false) }
@@ -733,35 +749,62 @@ fun MessageInputText(
                 }
                 // Send button.
                 else {
-                  IconButton(
-                    enabled =
-                      !inProgress &&
-                        !isResettingSession &&
-                        (curMessage.isNotEmpty() || pickedAudioClips.isNotEmpty()),
-                    onClick = {
-                      var message = curMessage.trim()
-                      onSendMessage(
-                        createMessagesToSend(
-                          pickedImages = pickedImages,
-                          audioClips = pickedAudioClips,
-                          text = message,
+                  Row(verticalAlignment = Alignment.CenterVertically) {
+                    PttOverlay(
+                      externalPttState = if (voiceUiState.recognizing) com.google.ai.edge.gallery.ui.voiceinput.PttState.LISTENING else com.google.ai.edge.gallery.ui.voiceinput.PttState.IDLE,
+                      onStartRecording = {
+                        voiceViewModel.startSpeechRecognition(
+                          onDone = { text ->
+                            if (text.isNotBlank()) {
+                              onSendMessage(
+                                createMessagesToSend(
+                                  pickedImages = pickedImages,
+                                  audioClips = pickedAudioClips,
+                                  text = text.trim(),
+                                )
+                              )
+                              pickedImages = listOf()
+                              pickedAudioClips = listOf()
+                              onValueChanged("")
+                            }
+                          },
+                          onAmplitudeChanged = {}
                         )
-                      )
-                      pickedImages = listOf()
-                      pickedAudioClips = listOf()
-                    },
-                    colors =
-                      IconButtonDefaults.iconButtonColors(
-                        containerColor = getTaskIconColor(task = task),
-                        disabledContainerColor = getTaskIconColor(task = task).copy(alpha = 0.3f),
-                      ),
-                  ) {
-                    Icon(
-                      Icons.AutoMirrored.Rounded.Send,
-                      contentDescription = stringResource(R.string.cd_send_prompt_icon),
-                      modifier = Modifier.offset(x = 2.dp),
-                      tint = Color.White,
+                      },
+                      onStopRecording = {
+                        voiceViewModel.stopSpeechRecognition()
+                      }
                     )
+                    IconButton(
+                      enabled =
+                        !inProgress &&
+                          !isResettingSession &&
+                          (curMessage.isNotEmpty() || pickedAudioClips.isNotEmpty()),
+                      onClick = {
+                        var message = curMessage.trim()
+                        onSendMessage(
+                          createMessagesToSend(
+                            pickedImages = pickedImages,
+                            audioClips = pickedAudioClips,
+                            text = message,
+                          )
+                        )
+                        pickedImages = listOf()
+                        pickedAudioClips = listOf()
+                      },
+                      colors =
+                        IconButtonDefaults.iconButtonColors(
+                          containerColor = getTaskIconColor(task = task),
+                          disabledContainerColor = getTaskIconColor(task = task).copy(alpha = 0.3f),
+                        ),
+                    ) {
+                      Icon(
+                        Icons.AutoMirrored.Rounded.Send,
+                        contentDescription = stringResource(R.string.cd_send_prompt_icon),
+                        modifier = Modifier.offset(x = 2.dp),
+                        tint = Color.White,
+                      )
+                    }
                   }
                 }
               }

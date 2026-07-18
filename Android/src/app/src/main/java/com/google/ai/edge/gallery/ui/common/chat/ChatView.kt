@@ -143,6 +143,7 @@ fun ChatView(
   allowEditingSystemPrompt: Boolean = false,
   curSystemPrompt: String = "",
   onSystemPromptChanged: (String) -> Unit = {},
+  onBenchmarkScreenClicked: (Model) -> Unit = {},
   sendMessageTrigger: SendMessageTrigger? = null,
 ) {
   val uiState by viewModel.uiState.collectAsState()
@@ -184,9 +185,10 @@ fun ChatView(
 
     // clean up all models.
     scope.launch(Dispatchers.Default) {
-      for (model in task.models) {
-        modelManagerViewModel.cleanupModel(context = context, task = task, model = model)
-      }
+      // For performance reasons based on user request, the model is kept loaded.
+      // for (model in task.models) {
+      //   modelManagerViewModel.cleanupModel(context = context, task = task, model = model)
+      // }
     }
   }
 
@@ -329,11 +331,12 @@ fun ChatView(
               onBackClicked = { handleNavigateUp() },
               onModelSelected = { prevModel, curModel ->
                 if (prevModel.name != curModel.name) {
-                  modelManagerViewModel.cleanupModel(
-                    context = context,
-                    task = task,
-                    model = prevModel,
-                  )
+                  // Keep model loaded per user request
+                  // modelManagerViewModel.cleanupModel(
+                  //   context = context,
+                  //   task = task,
+                  //   model = prevModel,
+                  // )
                 }
                 modelManagerViewModel.selectModel(model = curModel)
               },
@@ -362,8 +365,6 @@ fun ChatView(
           Box {
             val curModelDownloadStatus = modelManagerUiState.modelDownloadStatus[selectedModel.name]
 
-            composableBelowMessageList(selectedModel)
-
             Column(
               modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)
             ) {
@@ -373,48 +374,57 @@ fun ChatView(
                 when (targetState) {
                   // Main UI when model is downloaded.
                   true ->
-                    ChatPanel(
-                      modelManagerViewModel = modelManagerViewModel,
-                      task = task,
-                      selectedModel = selectedModel,
-                      viewModel = viewModel,
-                      innerPadding = innerPadding,
-                      skillCount = skillCount,
-                      mcpCount = mcpCount,
-                      navigateUp = navigateUp,
-                      onSendMessage = { model, messages -> onSendMessage(model, messages) },
-                      onRunAgainClicked = onRunAgainClicked,
-                      onBenchmarkClicked = onBenchmarkClicked,
-                      onStreamImageMessage = onStreamImageMessage,
-                      onStreamEnd = { averageFps ->
-                        viewModel.addMessage(
-                          model = selectedModel,
-                          message =
-                            ChatMessageInfo(
-                              content = "Live camera session ended. Average FPS: $averageFps"
-                            ),
-                        )
-                      },
-                      onStopButtonClicked = { onStopButtonClicked(selectedModel) },
-                      onImageSelected = { bitmaps, selectedBitmapIndex ->
-                        selectedImageIndex = selectedBitmapIndex
-                        allImageViewerImages = bitmaps
-                        showImageViewer = true
-                      },
-                      onSkillClicked = onSkillClicked,
-                      onMcpClicked = onMcpClicked,
-                      modifier = Modifier.weight(1f),
-                      showStopButtonInInputWhenInProgress = showStopButtonInInputWhenInProgress,
-                      showImagePicker = showImagePicker,
-                      showAudioPicker = showAudioPicker,
-                      emptyStateComposable = emptyStateComposable,
-                    )
+                    Box(modifier = Modifier.weight(1f)) {
+                      ChatPanel(
+                        modelManagerViewModel = modelManagerViewModel,
+                        task = task,
+                        selectedModel = selectedModel,
+                        viewModel = viewModel,
+                        innerPadding = innerPadding,
+                        skillCount = skillCount,
+                        mcpCount = mcpCount,
+                        navigateUp = navigateUp,
+                        onSendMessage = { model, messages -> onSendMessage(model, messages) },
+                        onRunAgainClicked = onRunAgainClicked,
+                        onBenchmarkClicked = onBenchmarkClicked,
+                        onStreamImageMessage = onStreamImageMessage,
+                        onStreamEnd = { averageFps ->
+                          viewModel.addMessage(
+                            model = selectedModel,
+                            message =
+                              ChatMessageInfo(
+                                content = "Live camera session ended. Average FPS: $averageFps"
+                              ),
+                          )
+                        },
+                        onStopButtonClicked = { onStopButtonClicked(selectedModel) },
+                        onImageSelected = { bitmaps, selectedBitmapIndex ->
+                          selectedImageIndex = selectedBitmapIndex
+                          allImageViewerImages = bitmaps
+                          showImageViewer = true
+                        },
+                        onSkillClicked = onSkillClicked,
+                        onMcpClicked = onMcpClicked,
+                        modifier = Modifier.fillMaxSize(),
+                        showStopButtonInInputWhenInProgress = showStopButtonInInputWhenInProgress,
+                        showImagePicker = showImagePicker,
+                        showAudioPicker = showAudioPicker,
+                        emptyStateComposable = emptyStateComposable,
+                        voiceButton = { composableBelowMessageList(selectedModel) },
+                      )
+                      val initializationStatus = modelManagerUiState.modelInitializationStatus[selectedModel.name]
+                      val initializing = initializationStatus?.status == ModelInitializationStatusType.INITIALIZING
+                      if (initializing) {
+                        // Spinner removed as requested
+                      }
+                    }
                   // Model download
                   false ->
                     ModelDownloadStatusInfoPanel(
                       model = selectedModel,
                       task = task,
                       modelManagerViewModel = modelManagerViewModel,
+                      onBenchmarkClicked = { onBenchmarkScreenClicked(it) }
                     )
                 }
               }

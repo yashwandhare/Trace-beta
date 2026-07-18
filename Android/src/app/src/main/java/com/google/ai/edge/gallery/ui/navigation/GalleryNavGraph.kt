@@ -30,6 +30,8 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
@@ -85,6 +87,7 @@ import kotlinx.coroutines.launch
 private const val TAG = "AGGalleryNavGraph"
 private const val ROUTE_HOMESCREEN = "homepage"
 private const val ROUTE_MODEL = "route_model"
+const val ROUTE_BENCHMARK = "benchmark"
 private const val ENTER_ANIMATION_DURATION_MS = 500
 private val ENTER_ANIMATION_EASING = EaseOutExpo
 private const val ENTER_ANIMATION_DELAY_MS = 100
@@ -192,7 +195,9 @@ fun GalleryNavHost(
               Bundle().apply { putString("capability_name", task.id) },
             )
           },
-          onModelsClicked = { /* model manager removed */ },
+          onModelsClicked = { 
+            navController.navigate("$ROUTE_BENCHMARK/Gemma-4-E2B-it")
+          },
           onNotificationsClicked = { /* notifications removed */ },
           gm4 = true,
         )
@@ -239,6 +244,9 @@ fun GalleryNavHost(
                     navController.navigateUp()
                   },
                   initialQuery = queryParam,
+                  onBenchmarkScreenClicked = { clickedModel ->
+                    navController.navigate("$ROUTE_BENCHMARK/${clickedModel.name}")
+                  }
                 )
             )
           } else {
@@ -257,12 +265,13 @@ fun GalleryNavHost(
                   for (curModel in customTask.task.models) {
                     val instanceToCleanUp = curModel.instance
                     scope.launch(Dispatchers.Default) {
-                      modelManagerViewModel.cleanupModel(
-                        context = context,
-                        task = customTask.task,
-                        model = curModel,
-                        instanceToCleanUp = instanceToCleanUp,
-                      )
+                      // Keep model loaded per user request
+                      // modelManagerViewModel.cleanupModel(
+                      //   context = context,
+                      //   task = customTask.task,
+                      //   model = curModel,
+                      //   instanceToCleanUp = instanceToCleanUp,
+                      // )
                     }
                   }
                 }
@@ -284,6 +293,23 @@ fun GalleryNavHost(
             }
           }
         }
+      }
+    }
+
+    // Benchmark screen.
+    composable(
+      route = "$ROUTE_BENCHMARK/{modelName}",
+      arguments = listOf(navArgument("modelName") { type = NavType.StringType }),
+      enterTransition = { slideEnter() },
+      exitTransition = { slideExit() },
+    ) { backStackEntry ->
+      val modelName = backStackEntry.arguments?.getString("modelName") ?: ""
+      modelManagerViewModel.getModelByName(name = modelName)?.let { model ->
+        com.google.ai.edge.gallery.ui.benchmark.BenchmarkScreen(
+          initialModel = model,
+          modelManagerViewModel = modelManagerViewModel,
+          onBackClicked = { navController.navigateUp() }
+        )
       }
     }
   }
@@ -415,12 +441,13 @@ private fun CustomTaskScreen(
             scope.launch(Dispatchers.Default) {
               // Clean up prev model.
               if (prevModel.name != newSelectedModel.name) {
-                modelManagerViewModel.cleanupModel(
-                  context = context,
-                  task = task,
-                  model = prevModel,
-                  instanceToCleanUp = instanceToCleanUp,
-                )
+                // Keep model loaded per user request
+                // modelManagerViewModel.cleanupModel(
+                //   context = context,
+                //   task = task,
+                //   model = prevModel,
+                //   instanceToCleanUp = instanceToCleanUp,
+                // )
               }
 
               // Update selected model.

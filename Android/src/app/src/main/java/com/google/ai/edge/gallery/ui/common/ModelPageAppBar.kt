@@ -50,8 +50,7 @@ import androidx.compose.ui.unit.dp
 import com.google.ai.edge.gallery.BuildConfig
 import com.google.ai.edge.gallery.GalleryEvent
 import com.google.ai.edge.gallery.R
-import com.google.ai.edge.gallery.customtasks.agentchat.agentSkillTopK
-import com.google.ai.edge.gallery.customtasks.agentchat.agentSkillTopKAdjusted
+
 import com.google.ai.edge.gallery.data.BuiltInTaskId
 import com.google.ai.edge.gallery.data.ConfigKeys
 import com.google.ai.edge.gallery.data.Model
@@ -119,17 +118,7 @@ fun ModelPageAppBar(
           Text(task.label, style = MaterialTheme.typography.titleMedium, color = tintColor)
         }
 
-        // Model chips pager.
-        if (!hideModelSelector) {
-          val enableModelPickerChip = !isModelInitializing && !inProgress
-          ModelPickerChip(
-            enabled = enableModelPickerChip,
-            task = task,
-            initialModel = model,
-            modelManagerViewModel = modelManagerViewModel,
-            onModelSelected = onModelSelected,
-          )
-        }
+
       }
     },
     modifier = modifier,
@@ -274,10 +263,7 @@ fun ModelPageAppBar(
         val oldConfigValues = model.configValues
         model.prevConfigValues = oldConfigValues
         model.configValues = curConfigValues
-        if (task.id == BuiltInTaskId.LLM_AGENT_CHAT) {
-          model.agentSkillTopKAdjusted = true
-          model.agentSkillTopK = curConfigValues[ConfigKeys.TOPK.label]
-        }
+
         modelManagerViewModel.updateConfigValuesUpdateTrigger()
 
         if (!task.handleModelConfigChangesInTask) {

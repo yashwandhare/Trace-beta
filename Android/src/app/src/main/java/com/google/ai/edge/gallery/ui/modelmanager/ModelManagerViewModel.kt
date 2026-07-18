@@ -950,20 +950,18 @@ constructor(
         }
 
         if (modelAllowlist == null) {
-          // Load from github.
-          var version = BuildConfig.VERSION_NAME.replace(".", "_")
-          val url = getAllowlistUrl(version)
-          Log.d(TAG, "Loading model allowlist from internet. Url: $url")
-          val data = getJsonResponse<ModelAllowlist>(url = url)
-          modelAllowlist = data?.jsonObj
-
-          if (modelAllowlist == null) {
-            Log.w(TAG, "Failed to load model allowlist from internet. Trying to load it from disk")
-            modelAllowlist = readModelAllowlistFromDisk()
-          } else {
-            Log.d(TAG, "Done: loading model allowlist from internet")
-            saveModelAllowlistToDisk(modelAllowlistContent = data?.textContent ?: "{}")
+          // Load from bundled assets (Trace: skip network, use our curated allowlist).
+          Log.d(TAG, "Loading model allowlist from bundled assets.")
+          modelAllowlist = readModelAllowlistFromAssets()
+          if (modelAllowlist != null) {
+            Log.d(TAG, "Loaded model allowlist from assets.")
           }
+        }
+
+        if (modelAllowlist == null) {
+          // Fallback: try cached disk copy.
+          Log.w(TAG, "Assets allowlist not found. Trying cached disk copy.")
+          modelAllowlist = readModelAllowlistFromDisk()
         }
 
         if (modelAllowlist == null) {
@@ -1094,6 +1092,20 @@ constructor(
       Log.d(TAG, "Done: saving model allowlist to disk.")
     } catch (e: Exception) {
       Log.e(TAG, "failed to write model allowlist to disk", e)
+    }
+  }
+
+  private fun readModelAllowlistFromAssets(): ModelAllowlist? {
+    try {
+      val fileName = MODEL_ALLOWLIST_FILENAME
+      Log.d(TAG, "Reading model allowlist from assets: $fileName")
+      val inputStream = context.assets.open(fileName)
+      val content = inputStream.bufferedReader().use { it.readText() }
+      val gson = Gson()
+      return gson.fromJson(content, ModelAllowlist::class.java)
+    } catch (e: Exception) {
+      Log.e(TAG, "failed to read model allowlist from assets", e)
+      return null
     }
   }
 

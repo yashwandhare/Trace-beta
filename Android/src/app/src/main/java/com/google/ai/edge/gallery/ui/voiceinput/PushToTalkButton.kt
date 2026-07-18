@@ -20,6 +20,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -101,8 +102,7 @@ enum class PttState {
 @Composable
 fun PushToTalkButton(
   state: PttState,
-  onPressStart: () -> Unit,
-  onPressEnd: () -> Unit,
+  onClick: () -> Unit,
   modifier: Modifier = Modifier,
   enabled: Boolean = true,
   size: Dp = 72.dp,
@@ -125,14 +125,14 @@ fun PushToTalkButton(
         !enabled -> MaterialTheme.colorScheme.surfaceVariant
         state == PttState.LISTENING -> Color(0xFFD32F2F)   // vivid red while recording
         state == PttState.PROCESSING -> MaterialTheme.colorScheme.surfaceVariant
-        else -> MaterialTheme.colorScheme.primaryContainer
+        else -> Color.Transparent // No background circle in idle
       }
 
       val iconTint = when {
         !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
         state == PttState.LISTENING -> Color.White
         state == PttState.PROCESSING -> MaterialTheme.colorScheme.onSurfaceVariant
-        else -> MaterialTheme.colorScheme.onPrimaryContainer
+        else -> Color(0xFFD32F2F) // Red icon in idle
       }
 
       Box(
@@ -152,16 +152,7 @@ fun PushToTalkButton(
             }
             .then(
               if (enabled && state != PttState.PROCESSING) {
-                Modifier.pointerInput(Unit) {
-                  detectTapGestures(
-                    onPress = {
-                      onPressStart()
-                      // Suspend until the finger is lifted or cancelled.
-                      tryAwaitRelease()
-                      onPressEnd()
-                    }
-                  )
-                }
+                Modifier.clickable { onClick() }
               } else {
                 Modifier
               }
@@ -181,7 +172,7 @@ fun PushToTalkButton(
               imageVector = Icons.Rounded.Mic,
               contentDescription = null,
               tint = iconTint,
-              modifier = Modifier.size(size * 0.45f),
+              modifier = Modifier.size(size * 0.65f),
             )
           }
           PttState.IDLE -> {
@@ -189,33 +180,12 @@ fun PushToTalkButton(
               imageVector = if (enabled) Icons.Rounded.Mic else Icons.Rounded.MicOff,
               contentDescription = null,
               tint = iconTint,
-              modifier = Modifier.size(size * 0.45f),
+              modifier = Modifier.size(size * 0.65f),
             )
           }
         }
       }
     }
-
-    // ── Label beneath button ─────────────────────────────────────────────
-    Spacer(modifier = Modifier.height(8.dp))
-    Text(
-      text =
-        when (state) {
-          PttState.IDLE -> if (enabled) "Hold to speak" else "Mic unavailable"
-          PttState.LISTENING -> "Listening…"
-          PttState.PROCESSING -> "Processing…"
-        },
-      style = MaterialTheme.typography.labelMedium.copy(
-        fontWeight = FontWeight.Medium,
-        fontSize = 12.sp,
-        letterSpacing = 0.5.sp,
-      ),
-      color =
-        when (state) {
-          PttState.LISTENING -> Color(0xFFD32F2F)
-          else -> MaterialTheme.colorScheme.onSurfaceVariant
-        },
-    )
   }
 }
 

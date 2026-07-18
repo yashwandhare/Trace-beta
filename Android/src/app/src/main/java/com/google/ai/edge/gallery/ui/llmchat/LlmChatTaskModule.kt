@@ -56,6 +56,17 @@ import dagger.hilt.components.SingletonComponent
 import dagger.multibindings.IntoSet
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.remember
+import com.google.ai.edge.gallery.ui.voiceinput.PttOverlay
+import com.google.ai.edge.gallery.voice.VoiceManager
+import com.google.ai.edge.gallery.voice.IntentRouter
+import com.google.ai.edge.gallery.voice.IntentType
+import com.google.ai.edge.gallery.filefetch.FileFetcher
+import com.google.ai.edge.gallery.ui.common.chat.ChatMessageAudioClip
+import com.google.ai.edge.gallery.ui.common.chat.ChatMessageText
+import com.google.ai.edge.gallery.ui.common.chat.ChatSide
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // AI Chat.
@@ -74,6 +85,7 @@ class LlmChatTask @Inject constructor() : CustomTask {
       sourceCodeUrl =
         "https://github.com/google-ai-edge/gallery/blob/main/Android/src/app/src/main/java/com/google/ai/edge/gallery/ui/llmchat/LlmChatModelHelper.kt",
       textInputPlaceHolderRes = R.string.text_input_placeholder_llm_chat,
+      defaultSystemPrompt = "You are Trace, an advanced, highly intelligent on-device AI assistant powered by Gemma 4. You are designed to be concise, helpful, and exceptionally capable at reasoning, problem-solving, and answering questions. You always provide direct, well-structured, and accurate responses, avoiding unnecessary filler. Since you run completely on-device, you prioritize efficiency and clarity in your interactions."
     )
 
   override fun initializeModelFn(
@@ -108,9 +120,22 @@ class LlmChatTask @Inject constructor() : CustomTask {
   override fun MainScreen(data: Any) {
     val myData = data as CustomTaskDataForBuiltinTask
     val viewModel: LlmChatViewModel = hiltViewModel()
-    LaunchedEffect(task) { viewModel.loadSystemPrompt(task) }
+    
+    val context = LocalContext.current
+    LaunchedEffect(task) { 
+      viewModel.loadSystemPrompt(task)
+      viewModel.initTts(context)
+    }
+    
     val uiSystemPrompt by viewModel.uiSystemPrompt.collectAsState()
     val systemPromptUpdatedMessage = stringResource(R.string.system_prompt_updated)
+
+    val coroutineScope = rememberCoroutineScope()
+    val voiceViewModel: com.google.ai.edge.gallery.ui.common.textandvoiceinput.HoldToDictateViewModel = hiltViewModel()
+    val intentRouter = remember { IntentRouter() }
+
+    val voiceUiState by voiceViewModel.uiState.collectAsState()
+
     LlmChatScreen(
       modelManagerViewModel = myData.modelManagerViewModel,
       navigateUp = myData.onNavUp,
@@ -125,6 +150,9 @@ class LlmChatTask @Inject constructor() : CustomTask {
           newPrompt = newPrompt,
           systemPromptUpdatedMessage = systemPromptUpdatedMessage,
         )
+      },
+      composableBelowMessageList = { model ->
+        // PttOverlay is now built into MessageInputText
       },
       emptyStateComposable = {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -144,6 +172,7 @@ class LlmChatTask @Inject constructor() : CustomTask {
           }
         }
       },
+      onBenchmarkScreenClicked = myData.onBenchmarkScreenClicked
     )
   }
 }
@@ -158,169 +187,4 @@ internal object LlmChatTaskModule {
   }
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Ask image.
 
-class LlmAskImageTask @Inject constructor() : CustomTask {
-  override val task: Task =
-    Task(
-      id = BuiltInTaskId.LLM_ASK_IMAGE,
-      label = "Ask Image",
-      category = Category.LLM,
-      icon = Icons.Outlined.Mms,
-      models = mutableListOf(),
-      description = "Ask questions about images with on-device large language models",
-      shortDescription = "Ask questions about images",
-      docUrl = "https://github.com/google-ai-edge/LiteRT-LM/blob/main/kotlin/README.md",
-      sourceCodeUrl =
-        "https://github.com/google-ai-edge/gallery/blob/main/Android/src/app/src/main/java/com/google/ai/edge/gallery/ui/llmchat/LlmChatModelHelper.kt",
-      textInputPlaceHolderRes = R.string.text_input_placeholder_llm_chat,
-    )
-
-  override fun initializeModelFn(
-    context: Context,
-    coroutineScope: CoroutineScope,
-    model: Model,
-    systemInstruction: Contents?,
-    onDone: (String) -> Unit,
-  ) {
-    model.runtimeHelper.initialize(
-      context = context,
-      model = model,
-      taskId = task.id,
-      supportImage = true,
-      supportAudio = false,
-      onDone = onDone,
-      coroutineScope = coroutineScope,
-      systemInstruction = systemInstruction,
-    )
-  }
-
-  override fun cleanUpModelFn(
-    context: Context,
-    coroutineScope: CoroutineScope,
-    model: Model,
-    onDone: () -> Unit,
-  ) {
-    model.runtimeHelper.cleanUp(model = model, onDone = onDone)
-  }
-
-  @Composable
-  override fun MainScreen(data: Any) {
-    val myData = data as CustomTaskDataForBuiltinTask
-    val viewModel: LlmAskImageViewModel = hiltViewModel()
-    LaunchedEffect(task) { viewModel.loadSystemPrompt(task) }
-    val uiSystemPrompt by viewModel.uiSystemPrompt.collectAsState()
-    val systemPromptUpdatedMessage = stringResource(R.string.system_prompt_updated)
-    LlmAskImageScreen(
-      modelManagerViewModel = myData.modelManagerViewModel,
-      navigateUp = myData.onNavUp,
-      viewModel = viewModel,
-      allowEditingSystemPrompt = true,
-      curSystemPrompt = uiSystemPrompt,
-      onSystemPromptChanged = { newPrompt ->
-        val selectedModel = myData.modelManagerViewModel.uiState.value.selectedModel
-        viewModel.applySystemPromptChange(
-          task = task,
-          model = selectedModel,
-          newPrompt = newPrompt,
-          systemPromptUpdatedMessage = systemPromptUpdatedMessage,
-        )
-      },
-    )
-  }
-}
-
-@Module
-@InstallIn(SingletonComponent::class) // Or another component that fits your scope
-internal object LlmAskImageModule {
-  @Provides
-  @IntoSet
-  fun provideTask(): CustomTask {
-    return LlmAskImageTask()
-  }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Ask audio.
-
-class LlmAskAudioTask @Inject constructor() : CustomTask {
-  override val task: Task =
-    Task(
-      id = BuiltInTaskId.LLM_ASK_AUDIO,
-      label = "Audio Scribe",
-      category = Category.LLM,
-      icon = Icons.Outlined.Mic,
-      models = mutableListOf(),
-      description =
-        "Instantly transcribe and/or translate audio clips using on-device large language models",
-      shortDescription = "Transcribe and translate audio",
-      docUrl = "https://github.com/google-ai-edge/LiteRT-LM/blob/main/kotlin/README.md",
-      sourceCodeUrl =
-        "https://github.com/google-ai-edge/gallery/blob/main/Android/src/app/src/main/java/com/google/ai/edge/gallery/ui/llmchat/LlmChatModelHelper.kt",
-      textInputPlaceHolderRes = R.string.text_input_placeholder_llm_chat,
-    )
-
-  override fun initializeModelFn(
-    context: Context,
-    coroutineScope: CoroutineScope,
-    model: Model,
-    systemInstruction: Contents?,
-    onDone: (String) -> Unit,
-  ) {
-    model.runtimeHelper.initialize(
-      context = context,
-      model = model,
-      taskId = task.id,
-      supportImage = false,
-      supportAudio = true,
-      onDone = onDone,
-      coroutineScope = coroutineScope,
-      systemInstruction = systemInstruction,
-    )
-  }
-
-  override fun cleanUpModelFn(
-    context: Context,
-    coroutineScope: CoroutineScope,
-    model: Model,
-    onDone: () -> Unit,
-  ) {
-    model.runtimeHelper.cleanUp(model = model, onDone = onDone)
-  }
-
-  @Composable
-  override fun MainScreen(data: Any) {
-    val myData = data as CustomTaskDataForBuiltinTask
-    val viewModel: LlmAskAudioViewModel = hiltViewModel()
-    LaunchedEffect(task) { viewModel.loadSystemPrompt(task) }
-    val uiSystemPrompt by viewModel.uiSystemPrompt.collectAsState()
-    val systemPromptUpdatedMessage = stringResource(R.string.system_prompt_updated)
-    LlmAskAudioScreen(
-      modelManagerViewModel = myData.modelManagerViewModel,
-      navigateUp = myData.onNavUp,
-      viewModel = viewModel,
-      allowEditingSystemPrompt = true,
-      curSystemPrompt = uiSystemPrompt,
-      onSystemPromptChanged = { newPrompt ->
-        val selectedModel = myData.modelManagerViewModel.uiState.value.selectedModel
-        viewModel.applySystemPromptChange(
-          task = task,
-          model = selectedModel,
-          newPrompt = newPrompt,
-          systemPromptUpdatedMessage = systemPromptUpdatedMessage,
-        )
-      },
-    )
-  }
-}
-
-@Module
-@InstallIn(SingletonComponent::class) // Or another component that fits your scope
-internal object LlmAskAudioModule {
-  @Provides
-  @IntoSet
-  fun provideTask(): CustomTask {
-    return LlmAskAudioTask()
-  }
-}

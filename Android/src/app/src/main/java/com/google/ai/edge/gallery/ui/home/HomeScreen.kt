@@ -438,9 +438,6 @@ fun HomeScreen(
                     AppTitle(enableAnimation = enableAnimation)
                   }
                   IntroText(enableAnimation = enableAnimation, gm4 = gm4)
-                  if (gm4) {
-                    TryGm4IntroText(enableAnimation = enableAnimation)
-                  }
                 }
 
                 // Tab header for categories.
@@ -611,8 +608,8 @@ private fun AppTitle(enableAnimation: Boolean) {
 
 @Composable
 fun AppTitleGm4(enableAnimation: Boolean) {
-  val text1 = "Google"
-  val text2 = "AI Edge Gallery"
+  val text1 = "Welcome"
+  val text2 = "Kazuto"
   val annotatedText = buildAnnotatedString {
     withStyle(style = SpanStyle(color = MaterialTheme.colorScheme.onSurface)) { append(text1) }
     append(" ")
@@ -862,23 +859,21 @@ private fun TaskList(
     ) {
       val chatToDescription =
         mapOf(
-          BuiltInTaskId.LLM_CHAT to "Chat with the latest Gemma 4 model today",
-          // use "\u00a0" to make sure the word before and after it should always be together when
-          // wrapping lines.
-          BuiltInTaskId.LLM_AGENT_CHAT to "Have Gemma 4 complete agentic tasks for\u00A0you",
+          BuiltInTaskId.LLM_CHAT to "Chat with the latest Gemma model today",
         )
-      for (task in
-        listOf(
-          modelManagerViewModel.getTaskById(BuiltInTaskId.LLM_CHAT)!!,
-          modelManagerViewModel.getTaskById(BuiltInTaskId.LLM_AGENT_CHAT)!!,
-        )) {
+      
+      val highlightTasks = listOfNotNull(
+        modelManagerViewModel.getTaskById(BuiltInTaskId.LLM_CHAT)
+      )
+      
+      for (task in highlightTasks) {
         TaskCard(
           task = task,
           index = 0,
           animate = !initialAnimationDone && enableAnimation,
           onClick = { navigateToTaskScreen(task) },
           modifier = Modifier.fillMaxWidth(),
-          description = chatToDescription[task.id]!!,
+          description = chatToDescription[task.id] ?: "",
         )
       }
 
