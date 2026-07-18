@@ -77,13 +77,13 @@ no screen capture, no RAG yet.)
 
 ### Dev B
 - [x] Build push-to-talk button UI (idle/listening/processing states)
-- [ ] Implement AI Chat UI for explicitly attaching files and images from the device
+- [x] Implement AI Chat UI for explicitly attaching files and images from the device
 
 ### Merge checkpoint
-- [ ] Dev A merges `dev-b` → `main`
-- [ ] Dev A merges `dev-a` → `main`
-- [ ] Dev A builds and tests combined `main`
-- [ ] Gate met? → Phase 1 complete.
+- [x] Dev A merges `dev-b` → `main`
+- [x] Dev A merges `dev-a` → `main`
+- [x] Dev A builds and tests combined `main`
+- [x] Gate met? → Phase 1 complete.
 
 ---
 
@@ -95,15 +95,15 @@ no screen capture, no RAG yet.)
 - [x] Wire device camera capture logic for the new Vision module (scan-and-chat)
 
 ### Dev B
-- [ ] Build the new Vision module homescreen entry and camera capture UI
-- [ ] Build the chat overlay for Vision (taking a photo of the real world and asking about it)
+- [x] Build the new Vision module homescreen entry and camera capture UI
+- [x] Build the chat overlay for Vision (taking a photo of the real world and asking about it)
 - [x] OCR quality test pass on real sample notes, report findings
 
 ### Merge checkpoint
-- [ ] Dev A merges `dev-b` → `main`
-- [ ] Dev A merges `dev-a` → `main`
-- [ ] Dev A builds and tests combined `main`
-- [ ] Gate met? → Phase 2 complete.
+- [x] Dev A merges `dev-b` → `main`
+- [x] Dev A merges `dev-a` → `main`
+- [x] Dev A builds and tests combined `main`
+- [x] Gate met? → Phase 2 complete.
 
 ---
 

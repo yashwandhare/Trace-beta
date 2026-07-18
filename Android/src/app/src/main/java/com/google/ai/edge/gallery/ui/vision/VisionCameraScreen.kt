@@ -68,11 +68,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.google.ai.edge.gallery.data.BuiltInTaskId
 import com.google.ai.edge.gallery.data.Task
-import com.google.ai.edge.gallery.ui.common.chat.ChatMessageImage
 import com.google.ai.edge.gallery.ui.common.chat.ChatSide
-import com.google.ai.edge.gallery.ui.common.chat.SendMessageTrigger
-import com.google.ai.edge.gallery.ui.llmchat.LlmChatScreen
-import com.google.ai.edge.gallery.ui.llmchat.LlmChatViewModel
+import com.google.ai.edge.gallery.ui.llmchat.ChatViewWrapper
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import java.util.concurrent.Executors
 
@@ -83,7 +80,7 @@ private const val TAG = "VisionCameraScreen"
 fun VisionCameraScreen(
   modelManagerViewModel: ModelManagerViewModel,
   onNavUp: () -> Unit,
-  viewModel: LlmChatViewModel = hiltViewModel()
+  viewModel: VisionChatViewModel = hiltViewModel()
 ) {
   var capturedBitmap by remember { mutableStateOf<Bitmap?>(null) }
   val context = LocalContext.current
@@ -98,23 +95,13 @@ fun VisionCameraScreen(
 
   if (capturedBitmap != null && task != null) {
     val selectedModel = modelManagerViewModel.uiState.value.selectedModel
-    // Show LlmChatScreen with the pre-populated image
-    LlmChatScreen(
-      modelManagerViewModel = modelManagerViewModel,
-      navigateUp = { capturedBitmap = null }, // Back button goes back to camera
-      taskId = BuiltInTaskId.VISION,
+    // Show ChatViewWrapper with the VisionChatViewModel
+    ChatViewWrapper(
       viewModel = viewModel,
-      allowEditingSystemPrompt = true,
-      sendMessageTrigger = SendMessageTrigger(
-        model = selectedModel,
-        messages = listOf(
-          ChatMessageImage(
-            bitmaps = listOf(capturedBitmap!!),
-            imageBitMaps = emptyList(), // Not used for triggering
-            side = ChatSide.USER,
-          )
-        )
-      )
+      modelManagerViewModel = modelManagerViewModel,
+      taskId = BuiltInTaskId.VISION,
+      navigateUp = { capturedBitmap = null }, // Back button goes back to camera
+      emptyStateComposable = { } // Keep it empty for overlay
     )
   } else {
     // Show Camera View
@@ -216,6 +203,14 @@ fun VisionCameraScreen(
                       true,
                     )
                   capturedBitmap = rotatedBitmap
+                  
+                  // Trigger processCameraFrame immediately after capture
+                  val selectedModel = modelManagerViewModel.uiState.value.selectedModel
+                  viewModel.processCameraFrame(
+                    model = selectedModel,
+                    bitmap = rotatedBitmap,
+                    input = "" // Default input used in ViewModel ("What do you see?")
+                  )
                 }
 
                 override fun onError(exception: ImageCaptureException) {
