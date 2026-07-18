@@ -891,10 +891,12 @@ private fun TaskList(
       val chatToDescription =
         mapOf(
           BuiltInTaskId.LLM_CHAT to "Chat with the latest Gemma model today",
+          BuiltInTaskId.VISION to "Scan the world with your camera and chat about it",
         )
       
       val highlightTasks = listOfNotNull(
-        modelManagerViewModel.getTaskById(BuiltInTaskId.LLM_CHAT)
+        modelManagerViewModel.getTaskById(BuiltInTaskId.LLM_CHAT),
+        modelManagerViewModel.getTaskById(BuiltInTaskId.VISION)
       )
       
       for (task in highlightTasks) {

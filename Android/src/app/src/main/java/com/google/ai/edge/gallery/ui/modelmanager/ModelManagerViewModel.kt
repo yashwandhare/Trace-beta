@@ -181,6 +181,7 @@ private val RESET_CONVERSATION_TURN_COUNT_CONFIG =
 private val PREDEFINED_LLM_TASK_ORDER =
   listOf(
     BuiltInTaskId.LLM_ASK_IMAGE,
+    BuiltInTaskId.VISION,
     BuiltInTaskId.LLM_ASK_AUDIO,
     BuiltInTaskId.LLM_CHAT,
     BuiltInTaskId.LLM_AGENT_CHAT,
@@ -727,6 +728,7 @@ constructor(
       mutableSetOf(
         BuiltInTaskId.LLM_CHAT,
         BuiltInTaskId.LLM_ASK_IMAGE,
+        BuiltInTaskId.VISION,
         BuiltInTaskId.LLM_ASK_AUDIO,
         BuiltInTaskId.LLM_PROMPT_LAB,
         BuiltInTaskId.LLM_TINY_GARDEN,
@@ -742,10 +744,12 @@ constructor(
       }
       if (
         (task.id == BuiltInTaskId.LLM_ASK_IMAGE && model.llmSupportImage) ||
+          (task.id == BuiltInTaskId.VISION && model.llmSupportImage) ||
           (task.id == BuiltInTaskId.LLM_ASK_AUDIO && model.llmSupportAudio) ||
           (task.id == BuiltInTaskId.LLM_TINY_GARDEN && model.llmSupportTinyGarden) ||
           (task.id == BuiltInTaskId.LLM_MOBILE_ACTIONS && model.llmSupportMobileActions) ||
           (task.id != BuiltInTaskId.LLM_ASK_IMAGE &&
+            task.id != BuiltInTaskId.VISION &&
             task.id != BuiltInTaskId.LLM_ASK_AUDIO &&
             task.id != BuiltInTaskId.LLM_TINY_GARDEN &&
             task.id != BuiltInTaskId.LLM_MOBILE_ACTIONS)
@@ -1242,6 +1246,7 @@ constructor(
       tasks.get(key = BuiltInTaskId.LLM_AGENT_CHAT)?.models?.add(model)
       if (model.llmSupportImage) {
         tasks.get(key = BuiltInTaskId.LLM_ASK_IMAGE)?.models?.add(model)
+        tasks.get(key = BuiltInTaskId.VISION)?.models?.add(model)
       }
       if (model.llmSupportAudio) {
         tasks.get(key = BuiltInTaskId.LLM_ASK_AUDIO)?.models?.add(model)
@@ -1322,6 +1327,7 @@ constructor(
         listOf(
           BuiltInTaskId.LLM_CHAT,
           BuiltInTaskId.LLM_ASK_IMAGE,
+          BuiltInTaskId.VISION,
           BuiltInTaskId.LLM_ASK_AUDIO,
         )
     }
@@ -1331,6 +1337,7 @@ constructor(
         listOf(
           BuiltInTaskId.LLM_CHAT,
           BuiltInTaskId.LLM_ASK_IMAGE,
+          BuiltInTaskId.VISION,
           BuiltInTaskId.LLM_ASK_AUDIO,
           BuiltInTaskId.LLM_PROMPT_LAB,
         )
