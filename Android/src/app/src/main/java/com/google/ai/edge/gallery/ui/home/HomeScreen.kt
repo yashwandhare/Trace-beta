@@ -887,16 +887,35 @@ private fun TaskList(
             translationY = (CONTENT_COMPOSABLES_OFFSET_Y.dp * (1 - progress)).toPx()
           },
       ) {
-        for (i in tasks.indices) {
-          TaskCard(
-            task = tasks[i],
-            index = i,
-            animate =
-              (pageIndex == 0 || pageIndex == 1) && !initialAnimationDone && enableAnimation,
-            onClick = { navigateToTaskScreen(tasks[i]) },
+        for (i in tasks.indices step 2) {
+          Row(
             modifier = Modifier.fillMaxWidth(),
-            square = true,
-          )
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+          ) {
+            TaskCard(
+              task = tasks[i],
+              index = i,
+              animate =
+                (pageIndex == 0 || pageIndex == 1) && !initialAnimationDone && enableAnimation,
+              onClick = { navigateToTaskScreen(tasks[i]) },
+              modifier = Modifier.weight(1f),
+              square = true,
+            )
+
+            if (i + 1 < tasks.size) {
+              TaskCard(
+                task = tasks[i + 1],
+                index = i + 1,
+                animate =
+                  (pageIndex == 0 || pageIndex == 1) && !initialAnimationDone && enableAnimation,
+                onClick = { navigateToTaskScreen(tasks[i + 1]) },
+                modifier = Modifier.weight(1f),
+                square = true,
+              )
+            } else {
+              Spacer(modifier = Modifier.weight(1f))
+            }
+          }
         }
       }
     } else {

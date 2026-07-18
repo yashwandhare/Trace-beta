@@ -316,8 +316,8 @@ fun ChatPanel(
             val imageHistoryCurIndex = remember { mutableIntStateOf(0) }
             var hAlign: Alignment.Horizontal = Alignment.End
             var backgroundColor: Color = when (task.id) {
-              BuiltInTaskId.LLM_CHAT -> Color(0xFF2196F3).copy(alpha = 0.2f)
-              BuiltInTaskId.VISION -> Color(0xFFF44336).copy(alpha = 0.2f)
+              BuiltInTaskId.LLM_CHAT -> Color(0xFF64B5F6) // Light Blue 300
+              BuiltInTaskId.VISION -> Color(0xFFE57373) // Red 300
               else -> MaterialTheme.customColors.userBubbleBgColor
             }
             var hardCornerAtLeftOrRight = false
@@ -326,8 +326,8 @@ fun ChatPanel(
             if (message.side == ChatSide.AGENT) {
               hAlign = Alignment.Start
               backgroundColor = when (task.id) {
-                BuiltInTaskId.LLM_CHAT -> Color(0xFF2196F3).copy(alpha = 0.1f)
-                BuiltInTaskId.VISION -> Color(0xFFF44336).copy(alpha = 0.1f)
+                BuiltInTaskId.LLM_CHAT -> Color(0xFF90CAF9) // Light Blue 200
+                BuiltInTaskId.VISION -> Color(0xFFEF9A9A) // Red 200
                 else -> MaterialTheme.customColors.agentBubbleBgColor
               }
               hardCornerAtLeftOrRight = true
