@@ -92,7 +92,7 @@ no screen capture, no RAG yet.)
 ### Dev A
 - [x] MediaProjection permission flow
 - [x] Screen capture → Gemma vision + voice question → response (Continuous Gemini Live mode implemented)
-- [ ] Wire device camera capture logic for the new Vision module (scan-and-chat)
+- [x] Wire device camera capture logic for the new Vision module (scan-and-chat)
 
 ### Dev B
 - [ ] Build the new Vision module homescreen entry and camera capture UI
