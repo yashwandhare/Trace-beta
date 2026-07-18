@@ -46,6 +46,7 @@ import com.google.ai.edge.litertlm.ToolProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import com.google.ai.edge.gallery.voice.InteractionOrigin
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -77,6 +78,8 @@ open class LlmChatViewModelBase(
   override fun onCleared() {
       super.onCleared()
       ttsManager?.shutdown()
+      // Clear the SemanticFileMatcher classifier so it doesn't hold a stale model reference.
+      com.google.ai.edge.gallery.filefetch.SemanticFileMatcher.clearClassifier()
   }
 
   /**
@@ -134,6 +137,38 @@ open class LlmChatViewModelBase(
         onDone = { addMessage(model, ChatMessageInfo(content = systemPromptUpdatedMessage)) },
       )
     }
+  }
+
+  /**
+   * Registers the SemanticFileMatcher classifier using this ViewModel's already-warm model.
+   * Call this once the model instance is ready (e.g., after initialization completes).
+   *
+   * DEMO SCOPE — see /docs/DECISIONS.md "File Fetch — semantic fallback candidate scope".
+   * This wiring will be removed when Phase 3 (Qdrant Edge) replaces the fallback entirely.
+   */
+  fun registerSemanticClassifier(model: Model) {
+      com.google.ai.edge.gallery.filefetch.SemanticFileMatcher.setClassifier { bitmap, prompt ->
+          val result = CompletableDeferred<String>()
+          // Run a single silent inference on the already-initialized model.
+          // We do NOT add messages to the chat history for this call.
+          model.runtimeHelper.runInference(
+              model = model,
+              input = prompt,
+              images = listOf(bitmap),
+              resultListener = { partialResult, done, _ ->
+                  if (done) result.complete(partialResult)
+              },
+              cleanUpListener = {
+                  if (!result.isCompleted) result.complete("")
+              },
+              onError = { msg ->
+                  android.util.Log.e("SemanticMatcher", "Classifier inference error: $msg")
+                  if (!result.isCompleted) result.complete("")
+              },
+              coroutineScope = viewModelScope,
+          )
+          result.await()
+      }
   }
 
   fun generateResponse(
@@ -257,15 +292,18 @@ open class LlmChatViewModelBase(
                     latencyMs = latencyMs.toFloat(),
                   )
                   // Only buffer/emit TTS for voice-originated prompts.
+                  // Uses main's improved chunking: word-count + last-punctuation boundary.
                   if (interactionOrigin == InteractionOrigin.VOICE) {
                     ttsBuffer += partialResult
-                    val sentences = ttsBuffer.split(SENTENCE_SPLIT_REGEX)
-                    if (sentences.size > 1) {
-                      val sentenceToSpeak = ttsBuffer.substring(0, ttsBuffer.lastIndexOf(sentences.last()))
-                      if (sentenceToSpeak.isNotBlank()) {
-                        ttsManager?.speak(sentenceToSpeak.trim(), android.speech.tts.TextToSpeech.QUEUE_ADD)
+                    val boundary = ttsBuffer.indexOfLast { it == '.' || it == '!' || it == '?' || it == '\n' }
+                    val enoughWords = ttsBuffer.trim().split(Regex("\\s+")).size >= TTS_CHUNK_WORD_COUNT
+                    if (boundary >= 0 || enoughWords) {
+                      val splitAt = if (boundary >= 0) boundary + 1 else ttsBuffer.lastIndexOf(' ').coerceAtLeast(0)
+                      val chunk = ttsBuffer.substring(0, splitAt).trim()
+                      if (chunk.isNotEmpty()) {
+                        ttsManager?.speak(chunk, android.speech.tts.TextToSpeech.QUEUE_ADD)
                       }
-                      ttsBuffer = sentences.last()
+                      ttsBuffer = ttsBuffer.substring(splitAt).trimStart()
                     }
                   }
                 }
@@ -349,6 +387,7 @@ open class LlmChatViewModelBase(
       removeLastMessage(model = model)
     }
     setInProgress(false)
+    ttsManager?.stop()
     model.runtimeHelper.stopResponse(model)
     Log.d(TAG, "Done stopping response")
   }
@@ -467,6 +506,8 @@ open class LlmChatViewModelBase(
     }
   }
 }
+
+private const val TTS_CHUNK_WORD_COUNT = 12
 
 @HiltViewModel
 class LlmChatViewModel

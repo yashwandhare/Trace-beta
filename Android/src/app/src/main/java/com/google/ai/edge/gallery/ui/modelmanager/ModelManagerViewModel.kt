@@ -58,6 +58,7 @@ import com.google.ai.edge.gallery.proto.AccessTokenData
 import com.google.ai.edge.gallery.proto.ImportedModel
 import com.google.ai.edge.gallery.proto.Theme
 import com.google.ai.edge.gallery.runtime.aicore.AICoreModelHelper
+import com.google.ai.edge.gallery.filefetch.SemanticFileMatcher
 import com.google.ai.edge.litertlm.Contents
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
@@ -146,6 +147,12 @@ data class ModelManagerUiState(
   /** The currently selected model. */
   val selectedModel: Model = EMPTY_MODEL,
 
+  // Semantic search scope settings
+  val searchScopeDownloadsEnabled: Boolean = true,
+  val searchScopeScreenshotsEnabled: Boolean = false,
+  val searchScopeDocumentsEnabled: Boolean = false,
+  val searchScopeRecentImagesCount: Int = 10,
+
   /** The history of text inputs entered by the user. */
   val textInputHistory: List<String> = listOf(),
   val configValuesUpdateTrigger: Long = 0L,
@@ -210,6 +217,57 @@ constructor(
 
   val authService = AuthorizationService(context)
   var curAccessToken: String = ""
+
+  init {
+    initSearchScopeSettings()
+  }
+
+  private fun initSearchScopeSettings() {
+    _uiState.update { currentState ->
+      val dl = dataStoreRepository.getSearchScopeDownloadsEnabled()
+      val sc = dataStoreRepository.getSearchScopeScreenshotsEnabled()
+      val dc = dataStoreRepository.getSearchScopeDocumentsEnabled()
+      val rc = dataStoreRepository.getSearchScopeRecentImagesCount()
+
+      SemanticFileMatcher.config = SemanticFileMatcher.SearchScopeConfig(
+        downloadsEnabled = dl,
+        screenshotsEnabled = sc,
+        documentsEnabled = dc,
+        recentImagesCount = rc
+      )
+
+      currentState.copy(
+        searchScopeDownloadsEnabled = dl,
+        searchScopeScreenshotsEnabled = sc,
+        searchScopeDocumentsEnabled = dc,
+        searchScopeRecentImagesCount = rc
+      )
+    }
+  }
+
+  fun setSearchScopeDownloadsEnabled(enabled: Boolean) {
+    dataStoreRepository.setSearchScopeDownloadsEnabled(enabled)
+    _uiState.update { it.copy(searchScopeDownloadsEnabled = enabled) }
+    SemanticFileMatcher.config = SemanticFileMatcher.config.copy(downloadsEnabled = enabled)
+  }
+
+  fun setSearchScopeScreenshotsEnabled(enabled: Boolean) {
+    dataStoreRepository.setSearchScopeScreenshotsEnabled(enabled)
+    _uiState.update { it.copy(searchScopeScreenshotsEnabled = enabled) }
+    SemanticFileMatcher.config = SemanticFileMatcher.config.copy(screenshotsEnabled = enabled)
+  }
+
+  fun setSearchScopeDocumentsEnabled(enabled: Boolean) {
+    dataStoreRepository.setSearchScopeDocumentsEnabled(enabled)
+    _uiState.update { it.copy(searchScopeDocumentsEnabled = enabled) }
+    SemanticFileMatcher.config = SemanticFileMatcher.config.copy(documentsEnabled = enabled)
+  }
+
+  fun setSearchScopeRecentImagesCount(count: Int) {
+    dataStoreRepository.setSearchScopeRecentImagesCount(count)
+    _uiState.update { it.copy(searchScopeRecentImagesCount = count) }
+    SemanticFileMatcher.config = SemanticFileMatcher.config.copy(recentImagesCount = count)
+  }
 
   override fun onCleared() {
     authService.dispose()

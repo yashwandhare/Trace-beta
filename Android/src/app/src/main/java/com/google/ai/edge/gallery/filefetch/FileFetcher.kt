@@ -86,9 +86,18 @@ class FileFetcher(private val context: Context) {
    */
   fun findFiles(query: String, limit: Int = 20): List<FileResult> {
     val results = mutableListOf<FileResult>()
-    val seen = mutableSetOf<String>() // de-duplicate by URI string
+    val seen = mutableSetOf<String>()
+
+    val tokens = query.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.length >= 2 }.take(6)
+    Log.d(TAG, "findFiles: raw=\"$query\" tokens=$tokens limit=$limit")
+
+    if (tokens.isEmpty()) {
+      Log.w(TAG, "findFiles: empty token set after cleaning \"$query\" — no query will be issued")
+      return results
+    }
 
     // 1. General files (documents, text, pdf, etc.)
+    val beforeGeneral = results.size
     queryMediaStore(
       collectionUri = MediaStore.Files.getContentUri("external"),
       query = query,
@@ -96,9 +105,11 @@ class FileFetcher(private val context: Context) {
       seen = seen,
       results = results,
     )
+    Log.d(TAG, "findFiles: general-files collection → ${results.size - beforeGeneral} hit(s), cumulative=${results.size}")
 
     // 2. Images (catch files MediaStore.Files may miss on some devices)
     if (results.size < limit) {
+      val beforeImages = results.size
       queryMediaStore(
         collectionUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
         query = query,
@@ -106,9 +117,14 @@ class FileFetcher(private val context: Context) {
         seen = seen,
         results = results,
       )
+      Log.d(TAG, "findFiles: images collection → ${results.size - beforeImages} hit(s), cumulative=${results.size}")
     }
 
-    Log.d(TAG, "findFiles(\"$query\") → ${results.size} result(s)")
+    if (results.isEmpty()) {
+      Log.w(TAG, "findFiles: zero results for tokens=$tokens — direct filename match failed; semantic fallback needed")
+    } else {
+      Log.d(TAG, "findFiles: returning ${results.size} result(s): ${results.take(3).map { it.displayName }}")
+    }
     return results
   }
 
@@ -131,8 +147,18 @@ class FileFetcher(private val context: Context) {
         MediaStore.MediaColumns.SIZE,
       )
 
-    val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?"
-    val selectionArgs = arrayOf("%$query%")
+    val extensions = setOf("jpg", "jpeg", "png", "gif", "pdf", "doc", "docx", "txt", "mp3", "mp4", "wav")
+    val queryTokens = query
+      .lowercase()
+      .split(Regex("[^\\p{L}\\p{N}]+"))
+      .filter { it.length >= 2 && it !in extensions }
+      .take(6)
+    if (queryTokens.isEmpty()) return
+
+    val selection = queryTokens.joinToString(" AND ") {
+      "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?"
+    }
+    val selectionArgs = queryTokens.map { "%$it%" }.toTypedArray()
     val sortOrder = "${MediaStore.MediaColumns.DISPLAY_NAME} ASC LIMIT $limit"
 
     var cursor: Cursor? = null

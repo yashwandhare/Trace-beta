@@ -59,7 +59,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ListAlt
 import androidx.compose.material.icons.rounded.Error
 import androidx.compose.material.icons.rounded.Flag
+import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -167,6 +169,7 @@ fun HomeScreen(
 ) {
   val uiState by modelManagerViewModel.uiState.collectAsState()
   var showSettingsDialog by remember { mutableStateOf(false) }
+  var showSearchScopeDialog by remember { mutableStateOf(false) }
   val scope = rememberCoroutineScope()
   val context = LocalContext.current
   val isDevBuild = context.packageName.endsWith(".dev")
@@ -300,6 +303,27 @@ fun HomeScreen(
                     ),
                 )
                 Spacer(modifier = Modifier.width(16.dp))
+                SquareDrawerItem(
+                  label = "Search Scope",
+                  description = "Configure semantic search folders",
+                  icon = Icons.Rounded.Search,
+                  onClick = {
+                    showSearchScopeDialog = true
+                    scope.launch { drawerState.close() }
+                  },
+                  modifier = Modifier.weight(1f),
+                  iconBrush =
+                    linearGradient(
+                      colors =
+                        listOf(
+                          MaterialTheme.customColors.taskBgGradientColors[0][0],
+                          MaterialTheme.customColors.taskBgGradientColors[0][1],
+                        )
+                    ),
+                )
+              }
+              Spacer(modifier = Modifier.height(16.dp))
+              Row(modifier = Modifier.fillMaxWidth()) {
                 SquareDrawerItem(
                   label = stringResource(R.string.drawer_models_label),
                   description = stringResource(R.string.drawer_models_description),
@@ -526,6 +550,13 @@ fun HomeScreen(
           Text(stringResource(R.string.cancel))
         }
       },
+    )
+  }
+
+  if (showSearchScopeDialog) {
+    SearchScopeDialog(
+      onDismissed = { showSearchScopeDialog = false },
+      viewModel = modelManagerViewModel,
     )
   }
 }

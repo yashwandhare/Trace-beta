@@ -1,5 +1,9 @@
 package com.google.ai.edge.gallery.voice
 
+import android.util.Log
+
+private const val TAG = "TraceIntentRouter"
+
 enum class IntentType {
     LLM_CHAT,
     FILE_FETCH,
@@ -13,123 +17,104 @@ data class IntentResult(
 )
 
 /**
- * Lightweight rule-based intent router.
+ * Rule-based intent router.
  *
- * Classifies a user query as one of:
- * - [IntentType.FILE_FETCH]     — voice/text file-fetch command
- * - [IntentType.SCREEN_EXPLAIN] — ask about the current screen
- * - [IntentType.LLM_CHAT]       — everything else → send to Gemma
+ * Requires a [context] for future semantic lookups (currently unused but
+ * kept to match the wiring established by origin/main).
  *
- * All regex objects are compiled once at class-init time to avoid per-call overhead.
+ * Classification order:
+ * 1. SCREEN_EXPLAIN — most specific; any recognisable screen-describe phrase
+ * 2. FILE_FETCH     — requires TWO independent signals (verb + valid target)
+ * 3. LLM_CHAT       — default fallback
  */
-class IntentRouter {
-
-    // ---------------------------------------------------------------------------
-    // File-fetch patterns
-    // Matches: "find file X", "open my resume", "pull up my ID", "show me lecture notes", etc.
-    // ---------------------------------------------------------------------------
-    private val fileFetchPrefixes = listOf(
-        Regex("""^(find|fetch|get|pull up|bring up|open|show|show me|look for|search for|locate)\s+(my\s+|the\s+|a\s+)?(?:file\s+)?(.+)""", RegexOption.IGNORE_CASE),
-        Regex("""^(?:can you |please )?(find|fetch|get|open|show|pull up|bring up)\s+(?:my\s+|the\s+)?(.+)""", RegexOption.IGNORE_CASE),
-    )
-
-    // Keywords whose presence strongly signals a file fetch intent regardless of phrasing.
-    private val fileFetchKeywords = setOf(
-        "file", "document", "doc", "pdf", "photo", "image", "picture", "screenshot",
-        "notes", "note", "resume", "cv", "id", "license", "card", "certificate",
-        "aadhar", "aadhaar", "passport", "marksheet", "report",
-    )
-
-    // Prefixes that are clearly file-fetch openers even without "file" in the query.
-    private val fileFetchOpeners = listOf(
-        "find file ", "fetch file ", "open file ",
-        "pull up ", "bring up ", "find my ", "open my ", "show my ",
-        "fetch my ", "get my ", "search for ", "look for ", "locate ",
-    )
-
-    // ---------------------------------------------------------------------------
-    // Screen-explain patterns
-    // ---------------------------------------------------------------------------
-    private val screenExplainKeywords = setOf(
-        "screen", "what's on screen", "what is on screen", "what do you see",
-        "explain this", "what is this", "describe this", "read this",
-        "what does this say", "what does this mean",
-    )
-
-    // ---------------------------------------------------------------------------
-    // Public API
-    // ---------------------------------------------------------------------------
+class IntentRouter(private val context: android.content.Context) {
 
     fun routeIntent(inputText: String): IntentResult {
-        val lower = inputText.lowercase().trim()
+        val lowerText = inputText.lowercase().trim()
+        Log.d(TAG, "routeIntent: input=\"$inputText\"")
 
-        // 1. Screen explain check (fast keyword scan)
-        if (screenExplainKeywords.any { lower.contains(it) }) {
+        // -----------------------------------------------------------------------
+        // SCREEN_EXPLAIN — checked first, most specific phrases
+        // -----------------------------------------------------------------------
+        val screenPhrases = listOf(
+            "explain screen",
+            "explain my screen",
+            "what is on my screen",
+            "what's on my screen",
+            "whats on my screen",
+            "read screen",
+            "read my screen",
+            "describe my screen",
+            "describe the screen",
+            "what do you see on screen",
+            "screen",
+        )
+        if (screenPhrases.any { lowerText.startsWith(it) }) {
+            Log.d(TAG, "routeIntent: classified=SCREEN_EXPLAIN action=requestCapture")
             return IntentResult(type = IntentType.SCREEN_EXPLAIN, query = inputText)
         }
 
-        // 2. File fetch — check openers first (cheapest path)
-        for (opener in fileFetchOpeners) {
-            if (lower.startsWith(opener)) {
-                val extracted = extractFileTarget(lower, opener)
-                return IntentResult(
-                    type = IntentType.FILE_FETCH,
-                    query = inputText,
-                    extractedFileName = extracted,
-                )
-            }
-        }
+        // -----------------------------------------------------------------------
+        // FILE_FETCH — requires TWO independent signals to fire:
+        //
+        // Signal A: an unambiguous file-action verb that cannot appear in normal
+        //           conversation without intent to open/retrieve something.
+        //           Deliberately excludes bare "show/get/open/read" which are too
+        //           common in general questions (e.g. "show me the weather").
+        //
+        // Signal B: the extracted target must pass a minimum-quality check — it
+        //           must be at least 3 characters and must NOT be a known
+        //           conversational noise phrase (e.g. "me", "it", "that", "the").
+        //
+        // Either signal alone is not sufficient; both must pass.
+        // -----------------------------------------------------------------------
 
-        // 3. File fetch — check for strong file keywords in short queries
-        //    (e.g. "my notes", "chemistry pdf")
-        val words = lower.split(Regex("\\s+"))
-        if (words.size <= 6 && words.any { it in fileFetchKeywords }) {
-            val cleaned = words.filter { it !in FILLER_WORDS }.joinToString(" ")
-            if (cleaned.isNotBlank()) {
-                return IntentResult(
-                    type = IntentType.FILE_FETCH,
-                    query = inputText,
-                    extractedFileName = cleaned,
-                )
-            }
-        }
-
-        // 4. File fetch — regex patterns for more complex phrasings
-        for (pattern in fileFetchPrefixes) {
-            val match = pattern.find(lower) ?: continue
-            val target = match.groupValues.last().trim()
-            if (target.isNotBlank() && target.split(" ").any { it in fileFetchKeywords }) {
-                return IntentResult(
-                    type = IntentType.FILE_FETCH,
-                    query = inputText,
-                    extractedFileName = target,
-                )
-            }
-        }
-
-        // 5. Default — send to LLM
-        return IntentResult(type = IntentType.LLM_CHAT, query = inputText)
-    }
-
-    // ---------------------------------------------------------------------------
-    // Helpers
-    // ---------------------------------------------------------------------------
-
-    private fun extractFileTarget(lower: String, matchedOpener: String): String {
-        val after = lower.removePrefix(matchedOpener).trim()
-        // Strip leading filler words ("the", "my", "a", "an")
-        return after
-            .split(" ")
-            .dropWhile { it in setOf("the", "my", "a", "an", "me", "for") }
-            .joinToString(" ")
-            .trim()
-    }
-
-    companion object {
-        private val FILLER_WORDS = setOf(
-            "open", "find", "show", "get", "fetch", "look", "search", "pull", "up",
-            "my", "me", "the", "a", "an", "for", "please", "can", "you",
-            "i", "need", "want", "bring",
+        // Strong verbs: unusual in general conversation without file intent
+        val strongVerbRegex = Regex(
+            "(?:fetch|pull\\s+up|bring\\s+up|locate|find\\s+(?:my|the|a)|open\\s+(?:my|the))" +
+            "\\s+(?:(?:my|the|a|an)\\s+)?(?:file\\s+|document\\s+|photo\\s+|image\\s+|pdf\\s+|picture\\s+)?(.+)",
+            RegexOption.IGNORE_CASE
         )
+
+        // Weak verbs: only a file-fetch signal when combined with an explicit file-type qualifier
+        val weakVerbRegex = Regex(
+            "(?:show|get|open|read|access|find|look\\s+for|search(?:\\s+for)?)\\s+" +
+            "(?:(?:my|the|a|an)\\s+)?" +
+            "(?:file\\s+|document\\s+|photo\\s+|image\\s+|pdf\\s+|picture\\s+|screenshot\\s+|scan\\s+|receipt\\s+|id\\s+|card\\s+|license\\s+|certificate\\s+|form\\s+|report\\s+|resume\\s+|cv\\s+|invoice\\s+|ticket\\s+|bill\\s+|letter\\s+)" +
+            "(.+)?",
+            RegexOption.IGNORE_CASE
+        )
+
+        // Noise words that should NOT be treated as valid file targets
+        val noiseTargets = setOf(
+            "me", "it", "that", "this", "up", "out", "here", "there",
+            "him", "her", "them", "something", "anything", "everything"
+        )
+
+        val strongMatch = strongVerbRegex.find(lowerText)
+        val weakMatch   = weakVerbRegex.find(lowerText)
+
+        val matchResult = strongMatch ?: weakMatch
+        if (matchResult != null) {
+            val rawTarget = matchResult.groupValues[1].trim().trimEnd('.', '!', '?')
+            val isValidTarget = rawTarget.length >= 3 && rawTarget.lowercase() !in noiseTargets
+
+            if (isValidTarget) {
+                Log.d(TAG, "routeIntent: classified=FILE_FETCH target=\"$rawTarget\" via=${if (strongMatch != null) "STRONG_VERB" else "WEAK_VERB+QUALIFIER"}")
+                return IntentResult(
+                    type = IntentType.FILE_FETCH,
+                    query = inputText,
+                    extractedFileName = rawTarget
+                )
+            } else {
+                Log.d(TAG, "routeIntent: file-fetch regex matched but target \"$rawTarget\" failed quality check → falling through to LLM_CHAT")
+            }
+        }
+
+        // -----------------------------------------------------------------------
+        // LLM_CHAT — default
+        // -----------------------------------------------------------------------
+        Log.d(TAG, "routeIntent: classified=LLM_CHAT action=sendToModel")
+        return IntentResult(type = IntentType.LLM_CHAT, query = inputText)
     }
 }

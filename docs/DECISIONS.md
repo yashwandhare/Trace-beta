@@ -100,3 +100,25 @@ scope — finding and understanding your own content — rather than reading as 
 Consistent with the broader pattern applied across every rejected/scoped-down feature in this log:
 anything with real-world consequence if wrong (financial data, identity data, submitted forms) must have
 a human-confirmation step. No exceptions, no "smart enough to skip it" carve-out.
+
+### File Fetch — semantic fallback candidate scope: configurable (formerly "last 10 photos + Downloads folder" demo-only)
+When a direct filename match returns zero results, the app falls back to scanning a candidate
+set and classifying each image via Gemma vision ("Is this a [description]? Yes or no").
+
+**What the scope is:**
+- User configurable in settings (Downloads, Screenshots, Documents, and recent MediaStore images count [10-50]).
+- Combined upper bound: configurable but typically < 100 candidates → ~0.5s classification time per image.
+
+**Why this scope was chosen:** speed + demo realism. Originally hardcoded, it is now exposed to users to allow them to balance search exhaustiveness against inference latency (e.g., ~15s worst-case for 30 candidates). This assumption holds for live demos and short-horizon testing but does not hold for real users with large, unorganized galleries.
+
+**What this is NOT:** a production-grade semantic search. It is a deliberately small, time-boxed shortcut
+to make the hackathon demo work without building a full indexing pipeline first.
+
+**What replaces it in Phase 3:** the Qdrant Edge RAG pipeline. The classification cache built here
+(`SemanticFileCache` — query → matched FileResult, persisted in-memory per session) is intentionally
+structured as a stepping stone. It proves the Gemma vision classification loop works end-to-end, gives
+real data on match accuracy before the indexing work starts, and will be replaced (not extended) by
+the vector-store index once Phase 3 is complete. Do not add new capability to the cache layer — keep
+it minimal so Phase 3 doesn't have to unpick it later.
+
+**Decision owner:** confirmed with user (2026-07-18) before implementation.

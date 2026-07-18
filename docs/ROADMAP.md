@@ -109,6 +109,17 @@ offline, on the real device. File Fetch working via voice command. Merged to `ma
 
 ---
 
+## Pre-Phase 3 Stabilization
+
+**Dev C:**
+- [ ] Fix TTS reading typed text out loud and reduce first-speech latency
+- [ ] Fix Intent Router to handle typed inputs and correctly parse commands
+- [ ] Fix Screen Explain MediaProjection lifecycle and ensure Gemma receives the captured screen image
+
+**Gate:** Screen Explain works continuously without crashing, TTS responds fast and only when appropriate, File Fetch opens files successfully. Merged to `main`, confirmed working.
+
+---
+
 ## Phase 3 — Notes RAG Pipeline (highest technical risk — Dev A owns this fully)
 
 **Dev A:**
@@ -126,6 +137,10 @@ offline, on the real device. File Fetch working via voice command. Merged to `ma
       `QuizItem` data class with question/answer/options fields) so this can be built and tested fully
       independently of whether the RAG pipeline is ready yet
 - [ ] Finish OCR quality findings from Phase 2, report to Dev A
+
+**Dev C (If joining):**
+- [ ] Support Dev A in JNI bridge development and embedding pipeline validation
+- [ ] Cross-check RAG data structures between Dev A's backend and Dev B's UI models
 
 **Gate:** Voice-triggered quiz generation from real notes, rendered in the Dev B-built UI, working
 offline. If Dev A's RAG pipeline hit the fallback path, the gate is: fallback feature (e.g.,

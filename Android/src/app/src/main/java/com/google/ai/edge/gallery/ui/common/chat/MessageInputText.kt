@@ -258,6 +258,118 @@ fun MessageInputText(
   LaunchedEffect(pickedImages) { onPickedImagesChanged(pickedImages) }
 
   LaunchedEffect(pickedAudioClips) { onPickedAudioClipsChanged(pickedAudioClips) }
+  
+  var pendingFileFetchQuery by remember { mutableStateOf<String?>(null) }
+  
+  val storagePermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+    androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+  ) { permissions ->
+    val allGranted = permissions.entries.all { it.value }
+    val query = pendingFileFetchQuery
+    if (allGranted && query != null) {
+      scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        val handler = com.google.ai.edge.gallery.filefetch.DefaultIntentFileFetchHandler(context)
+        val result = handler.handleFindFile(query)
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+          if (result != null) {
+            val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+              setDataAndType(result.uri, context.contentResolver.getType(result.uri) ?: "*/*")
+              addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            try {
+              context.startActivity(viewIntent)
+            } catch (_: Exception) {
+              android.widget.Toast.makeText(context, "No app found to open this file", android.widget.Toast.LENGTH_SHORT).show()
+            }
+          } else {
+            android.widget.Toast.makeText(context, "Could not find: $query", android.widget.Toast.LENGTH_SHORT).show()
+          }
+        }
+      }
+    }
+    pendingFileFetchQuery = null
+  }
+
+  val performFileFetch: (String) -> Unit = { query ->
+    val hasPermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+      androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_MEDIA_IMAGES) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    } else {
+      androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    }
+    if (hasPermission) {
+      // Run on IO — semantic fallback (Pass 2) can take up to ~20s; must not block Main.
+      android.widget.Toast.makeText(context, "Searching your files\u2026", android.widget.Toast.LENGTH_SHORT).show()
+      scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        val handler = com.google.ai.edge.gallery.filefetch.DefaultIntentFileFetchHandler(context)
+        val result = handler.handleFindFile(query)
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+          if (result != null) {
+            val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+              setDataAndType(result.uri, context.contentResolver.getType(result.uri) ?: "*/*")
+              addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            try {
+              context.startActivity(viewIntent)
+            } catch (_: Exception) {
+              android.widget.Toast.makeText(context, "No app found to open this file", android.widget.Toast.LENGTH_SHORT).show()
+            }
+          } else {
+            android.widget.Toast.makeText(context, "Could not find: $query", android.widget.Toast.LENGTH_SHORT).show()
+          }
+        }
+      }
+    } else {
+      pendingFileFetchQuery = query
+      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+        storagePermissionLauncher.launch(arrayOf(android.Manifest.permission.READ_MEDIA_IMAGES, android.Manifest.permission.READ_MEDIA_VIDEO, android.Manifest.permission.READ_MEDIA_AUDIO))
+      } else {
+        storagePermissionLauncher.launch(arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE))
+      }
+    }
+  }
+
+  val mediaProjectionLauncher = rememberLauncherForActivityResult(
+    androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+  ) { result ->
+    if (result.resultCode == android.app.Activity.RESULT_OK && result.data != null) {
+      val intent = android.content.Intent(context, com.google.ai.edge.gallery.ocr.ScreenCaptureService::class.java).apply {
+        putExtra(com.google.ai.edge.gallery.ocr.ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
+        putExtra(com.google.ai.edge.gallery.ocr.ScreenCaptureService.EXTRA_RESULT_DATA, result.data)
+      }
+      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+          context.startForegroundService(intent)
+      } else {
+          context.startService(intent)
+      }
+    }
+  }
+
+  LaunchedEffect(Unit) {
+      com.google.ai.edge.gallery.ocr.ScreenExplainManager.results.collect { result ->
+          val prompt = buildString {
+              append(result.question)
+              if (result.ocrText.isNotBlank()) {
+                  append("\n\nVisible screen text:\n")
+                  append(result.ocrText)
+              }
+          }
+          val messages = mutableListOf<ChatMessage>(
+              ChatMessageText(
+                  content = prompt,
+                  side = ChatSide.USER,
+                  data = if (result.speakResponse) com.google.ai.edge.gallery.voice.VoiceInputMarker else null,
+              )
+          )
+          result.bitmap?.let { bitmap ->
+              messages += ChatMessageImage(
+                  bitmaps = listOf(bitmap),
+                  imageBitMaps = listOf(bitmap.asImageBitmap()),
+                  side = ChatSide.USER,
+              )
+          }
+          onSendMessage(messages)
+      }
+  }
 
   // Permission request when taking picture.
   val takePicturePermissionLauncher =
@@ -281,6 +393,52 @@ fun MessageInputText(
       permissionGranted ->
       if (permissionGranted) {
         handleClickRecordAudioClip()
+      }
+    }
+
+  val handleStartSpeech = {
+    voiceViewModel.startSpeechRecognition(
+      onDone = { text ->
+        if (text.isNotBlank()) {
+          val intentRouter = com.google.ai.edge.gallery.voice.IntentRouter(context)
+          val intentResult = intentRouter.routeIntent(text)
+
+          if (intentResult.type == com.google.ai.edge.gallery.voice.IntentType.LLM_CHAT) {
+            // Use onSendVoiceMessage so TTS is triggered in the ViewModel.
+            onSendVoiceMessage(
+              createMessagesToSend(
+                pickedImages = pickedImages,
+                audioClips = pickedAudioClips,
+                text = text.trim(),
+              )
+            )
+          } else if (intentResult.type == com.google.ai.edge.gallery.voice.IntentType.SCREEN_EXPLAIN) {
+            com.google.ai.edge.gallery.ocr.ScreenExplainManager.requestCapture(
+              com.google.ai.edge.gallery.ocr.ScreenExplainRequest(text, speakResponse = true)
+            )
+            if (!com.google.ai.edge.gallery.ocr.ScreenExplainManager.isServiceRunning) {
+                val projectionManager = context.getSystemService(android.content.Context.MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
+                mediaProjectionLauncher.launch(projectionManager.createScreenCaptureIntent())
+            }
+          } else if (intentResult.type == com.google.ai.edge.gallery.voice.IntentType.FILE_FETCH) {
+            performFileFetch(intentResult.extractedFileName ?: "")
+          }
+          updatePickedImages(listOf())
+          pickedAudioClips = listOf()
+          onValueChanged("")
+        }
+      },
+      onAmplitudeChanged = {}
+    )
+  }
+
+  val speechPermissionLauncher =
+    rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+      permissionGranted ->
+      if (permissionGranted) {
+        handleStartSpeech()
+      } else {
+        android.widget.Toast.makeText(context, "Microphone permission required for voice", android.widget.Toast.LENGTH_SHORT).show()
       }
     }
 
@@ -752,46 +910,58 @@ fun MessageInputText(
                 // Send button.
                 else {
                   Row(verticalAlignment = Alignment.CenterVertically) {
-                    PttOverlay(
-                      externalPttState = if (voiceUiState.recognizing) com.google.ai.edge.gallery.ui.voiceinput.PttState.LISTENING else com.google.ai.edge.gallery.ui.voiceinput.PttState.IDLE,
-                      onStartRecording = {
-                        voiceViewModel.startSpeechRecognition(
-                          onDone = { text ->
-                            if (text.isNotBlank()) {
-                              // Use onSendVoiceMessage so the ViewModel knows this is voice.
-                              onSendVoiceMessage(
-                                createMessagesToSend(
-                                  pickedImages = pickedImages,
-                                  audioClips = pickedAudioClips,
-                                  text = text.trim(),
-                                )
-                              )
-                              pickedImages = listOf()
-                              pickedAudioClips = listOf()
-                              onValueChanged("")
-                            }
-                          },
-                          onAmplitudeChanged = {}
-                        )
+                    IconButton(
+                      onClick = {
+                        if (voiceUiState.recognizing) {
+                          voiceViewModel.stopSpeechRecognition()
+                        } else {
+                          if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                            handleStartSpeech()
+                          } else {
+                            speechPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                          }
+                        }
                       },
-                      onStopRecording = {
-                        voiceViewModel.stopSpeechRecognition()
-                      }
-                    )
+                      colors =
+                        IconButtonDefaults.iconButtonColors(
+                          containerColor = if (voiceUiState.recognizing) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.error,
+                        ),
+                    ) {
+                      Icon(
+                        Icons.Rounded.Mic,
+                        contentDescription = "Mic",
+                        tint = if (voiceUiState.recognizing) MaterialTheme.colorScheme.onErrorContainer else Color.White,
+                      )
+                    }
                     IconButton(
                       enabled =
                         !inProgress &&
                           !isResettingSession &&
                           (curMessage.isNotEmpty() || pickedAudioClips.isNotEmpty()),
                       onClick = {
-                        var message = curMessage.trim()
-                        onSendMessage(
-                          createMessagesToSend(
-                            pickedImages = pickedImages,
-                            audioClips = pickedAudioClips,
-                            text = message,
+                        val message = curMessage.trim()
+                        val intentResult = com.google.ai.edge.gallery.voice.IntentRouter(context).routeIntent(message)
+                        when (intentResult.type) {
+                          com.google.ai.edge.gallery.voice.IntentType.FILE_FETCH -> {
+                            performFileFetch(intentResult.extractedFileName.orEmpty())
+                          }
+                          com.google.ai.edge.gallery.voice.IntentType.SCREEN_EXPLAIN -> {
+                            com.google.ai.edge.gallery.ocr.ScreenExplainManager.requestCapture(
+                              com.google.ai.edge.gallery.ocr.ScreenExplainRequest(message, speakResponse = false)
+                            )
+                            if (!com.google.ai.edge.gallery.ocr.ScreenExplainManager.isServiceRunning) {
+                              val projectionManager = context.getSystemService(android.content.Context.MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
+                              mediaProjectionLauncher.launch(projectionManager.createScreenCaptureIntent())
+                            }
+                          }
+                          com.google.ai.edge.gallery.voice.IntentType.LLM_CHAT -> onSendMessage(
+                            createMessagesToSend(
+                              pickedImages = pickedImages,
+                              audioClips = pickedAudioClips,
+                              text = message,
+                            )
                           )
-                        )
+                        }
                         pickedImages = listOf()
                         pickedAudioClips = listOf()
                       },
