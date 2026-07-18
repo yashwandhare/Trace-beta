@@ -248,8 +248,10 @@ class ScreenCaptureService : Service() {
 
     private fun startCapture(resultCode: Int, resultData: Intent) {
         val metrics = android.content.res.Resources.getSystem().displayMetrics
-        val width = metrics.widthPixels
-        val height = metrics.heightPixels
+        // Downscale capture resolution to reduce lag and memory overhead.
+        // ML Kit scales down internally anyway, so half-res is perfectly fine for OCR.
+        val width = metrics.widthPixels / 2
+        val height = metrics.heightPixels / 2
         val density = metrics.densityDpi
 
         val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager

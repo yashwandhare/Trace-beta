@@ -155,11 +155,12 @@ class FileFetcher(private val context: Context) {
       .take(6)
     if (queryTokens.isEmpty()) return
 
+    // Use LOWER() on the column so matching is always case-insensitive regardless of device locale
     val selection = queryTokens.joinToString(" AND ") {
-      "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?"
+      "LOWER(${MediaStore.MediaColumns.DISPLAY_NAME}) LIKE ?"
     }
     val selectionArgs = queryTokens.map { "%$it%" }.toTypedArray()
-    val sortOrder = "${MediaStore.MediaColumns.DISPLAY_NAME} ASC LIMIT $limit"
+    val sortOrder = "${MediaStore.MediaColumns.DATE_MODIFIED} DESC LIMIT $limit"
 
     var cursor: Cursor? = null
     try {
