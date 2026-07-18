@@ -10,9 +10,12 @@ import com.google.ai.edge.gallery.ui.common.chat.ChatMessageText
 import com.google.ai.edge.gallery.ui.common.chat.ChatSide
 import com.google.ai.edge.gallery.ui.llmchat.LlmChatViewModelBase
 import com.google.ai.edge.gallery.voice.InteractionOrigin
+import com.google.ai.edge.gallery.ocr.OcrHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.launch
 
 @HiltViewModel
 class VisionChatViewModel @Inject constructor(
@@ -43,9 +46,69 @@ class VisionChatViewModel @Inject constructor(
             )
         )
 
-        val textInput = input.ifBlank { "What do you see?" }
+        viewModelScope.launch {
+            val ocrHelper = OcrHelper()
+            var extractedText = ""
+            try {
+                val ocrResult = ocrHelper.recognizeText(bitmap)
+                if (ocrResult.rawText.isNotBlank()) {
+                    extractedText = "\n\n[OCR Text from Image]:\n${ocrResult.rawText}"
+                }
+            } catch (e: Exception) {
+                // Ignore OCR failures
+            } finally {
+                ocrHelper.close()
+            }
 
-        // Add text to chat history
+            val textInput = (input.ifBlank { "What do you see?" }) + extractedText
+
+            // Add text to chat history
+            addMessage(
+                model,
+                ChatMessageText(
+                    content = textInput,
+                    side = ChatSide.USER,
+                    data = if (isVoice) InteractionOrigin.VOICE else InteractionOrigin.TEXT
+                )
+            )
+
+            generateResponse(
+                model = model,
+                input = textInput,
+                images = listOf(bitmap),
+                onFirstToken = onFirstToken,
+                onDone = onDone,
+                onError = onError,
+                interactionOrigin = if (isVoice) InteractionOrigin.VOICE else InteractionOrigin.TEXT,
+                allowThinking = false // Generally false for quick scan-and-chat
+            )
+        }
+    }
+
+    /**
+     * Processes a sequence of video frames and an optional voice/text input.
+     */
+    fun processVideoFrames(
+        model: Model,
+        bitmaps: List<Bitmap>,
+        input: String,
+        isVoice: Boolean = true,
+        onFirstToken: (Model) -> Unit = {},
+        onDone: () -> Unit = {},
+        onError: (String) -> Unit = {}
+    ) {
+        // Add images to chat history
+        addMessage(
+            model,
+            ChatMessageImage(
+                bitmaps = bitmaps,
+                imageBitMaps = bitmaps.map { it.asImageBitmap() },
+                side = ChatSide.USER
+            )
+        )
+
+        val textInput = input.ifBlank { "What is happening in this video?" }
+
         addMessage(
             model,
             ChatMessageText(
@@ -58,12 +121,12 @@ class VisionChatViewModel @Inject constructor(
         generateResponse(
             model = model,
             input = textInput,
-            images = listOf(bitmap),
+            images = bitmaps,
             onFirstToken = onFirstToken,
             onDone = onDone,
             onError = onError,
             interactionOrigin = if (isVoice) InteractionOrigin.VOICE else InteractionOrigin.TEXT,
-            allowThinking = false // Generally false for quick scan-and-chat
+            allowThinking = false
         )
     }
 }
