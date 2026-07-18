@@ -53,6 +53,7 @@ import com.google.ai.edge.gallery.ui.common.chat.SendMessageTrigger
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import com.google.ai.edge.gallery.ui.theme.emptyStateContent
 import com.google.ai.edge.gallery.ui.theme.emptyStateTitle
+import com.google.ai.edge.gallery.voice.InteractionOrigin
 import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.Message
 
@@ -278,6 +279,8 @@ fun ChatViewWrapper(
             )
           },
           allowThinking = task.allowCapability(ModelCapability.LLM_THINKING, model),
+          // Determine origin: audio clip messages = voice, else text keyboard.
+          interactionOrigin = if (audioMessages.isNotEmpty()) InteractionOrigin.VOICE else InteractionOrigin.TEXT,
         )
 
         val activeSkills = getActiveSkills()
@@ -354,6 +357,36 @@ fun ChatViewWrapper(
     onSystemPromptChanged = onSystemPromptChanged,
     sendMessageTrigger = sendMessageTrigger,
     showAudioPicker = showAudioPicker,
+    // Voice-originated messages always use VOICE origin so TTS fires.
+    onSendVoiceMessage = { model, messages ->
+      for (message in messages) {
+        viewModel.addMessage(model = model, message = message)
+      }
+      var text = ""
+      for (message in messages) {
+        if (message is ChatMessageText) text = message.content
+      }
+      if (text.isNotEmpty()) {
+        modelManagerViewModel.addTextInputHistory(text)
+        viewModel.generateResponse(
+          model = model,
+          input = text,
+          onFirstToken = onFirstToken,
+          onDone = { onGenerateResponseDone(model) },
+          onError = { errorMessage ->
+            viewModel.handleError(
+              context = context,
+              task = task,
+              model = model,
+              errorMessage = errorMessage,
+              modelManagerViewModel = modelManagerViewModel,
+            )
+          },
+          allowThinking = task.allowCapability(ModelCapability.LLM_THINKING, model),
+          interactionOrigin = InteractionOrigin.VOICE,
+        )
+      }
+    },
   )
 }
 

@@ -45,6 +45,7 @@ import com.google.ai.edge.litertlm.Message
 import com.google.ai.edge.litertlm.ToolProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import com.google.ai.edge.gallery.voice.InteractionOrigin
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -52,6 +53,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 private const val TAG = "AGLlmChatViewModel"
+
+// Pre-compiled once — avoids recompiling Regex on every streaming token.
+private val SENTENCE_SPLIT_REGEX = Regex("(?<=[.!?])\\s+|(?<=[.!?])$")
 
 @OptIn(ExperimentalApi::class)
 open class LlmChatViewModelBase(
@@ -141,6 +145,7 @@ open class LlmChatViewModelBase(
     onDone: () -> Unit = {},
     onError: (String) -> Unit,
     allowThinking: Boolean = false,
+    interactionOrigin: InteractionOrigin = InteractionOrigin.TEXT,
   ) {
     val accelerator = model.getStringConfigValue(key = ConfigKeys.ACCELERATOR, defaultValue = "")
     viewModelScope.launch(Dispatchers.Default) {
@@ -154,7 +159,8 @@ open class LlmChatViewModelBase(
       while (model.instance == null) {
         delay(100)
       }
-      delay(500)
+      // NOTE: The previous delay(500) here was removed — it added 500ms to every
+      // inference call with no functional purpose.
 
       // Run inference.
       val audioClips: MutableList<ByteArray> = mutableListOf()
@@ -250,15 +256,17 @@ open class LlmChatViewModelBase(
                     partialContent = partialResult,
                     latencyMs = latencyMs.toFloat(),
                   )
-                  ttsBuffer += partialResult
-                  val punctuationRegex = Regex("(?<=[.!?])\\s+|(?<=[.!?])$")
-                  val sentences = ttsBuffer.split(punctuationRegex)
-                  if (sentences.size > 1) {
-                    val sentenceToSpeak = ttsBuffer.substring(0, ttsBuffer.lastIndexOf(sentences.last()))
-                    if (sentenceToSpeak.isNotBlank()) {
-                      ttsManager?.speak(sentenceToSpeak.trim(), android.speech.tts.TextToSpeech.QUEUE_ADD)
+                  // Only buffer/emit TTS for voice-originated prompts.
+                  if (interactionOrigin == InteractionOrigin.VOICE) {
+                    ttsBuffer += partialResult
+                    val sentences = ttsBuffer.split(SENTENCE_SPLIT_REGEX)
+                    if (sentences.size > 1) {
+                      val sentenceToSpeak = ttsBuffer.substring(0, ttsBuffer.lastIndexOf(sentences.last()))
+                      if (sentenceToSpeak.isNotBlank()) {
+                        ttsManager?.speak(sentenceToSpeak.trim(), android.speech.tts.TextToSpeech.QUEUE_ADD)
+                      }
+                      ttsBuffer = sentences.last()
                     }
-                    ttsBuffer = sentences.last()
                   }
                 }
               }
@@ -270,7 +278,7 @@ open class LlmChatViewModelBase(
               }
 
               if (done) {
-                if (ttsBuffer.isNotBlank()) {
+                if (interactionOrigin == InteractionOrigin.VOICE && ttsBuffer.isNotBlank()) {
                   ttsManager?.speak(ttsBuffer.trim(), android.speech.tts.TextToSpeech.QUEUE_ADD)
                   ttsBuffer = ""
                 }

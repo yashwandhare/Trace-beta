@@ -145,6 +145,8 @@ fun ChatView(
   onSystemPromptChanged: (String) -> Unit = {},
   onBenchmarkScreenClicked: (Model) -> Unit = {},
   sendMessageTrigger: SendMessageTrigger? = null,
+  // Voice (PTT) messages; defaults to onSendMessage so callers don't have to set it.
+  onSendVoiceMessage: (Model, List<ChatMessage>) -> Unit = onSendMessage,
 ) {
   val uiState by viewModel.uiState.collectAsState()
   val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
@@ -411,6 +413,7 @@ fun ChatView(
                         showAudioPicker = showAudioPicker,
                         emptyStateComposable = emptyStateComposable,
                         voiceButton = { composableBelowMessageList(selectedModel) },
+                        onSendVoiceMessage = { model, msgs -> onSendVoiceMessage(model, msgs) },
                       )
                       val initializationStatus = modelManagerUiState.modelInitializationStatus[selectedModel.name]
                       val initializing = initializationStatus?.status == ModelInitializationStatusType.INITIALIZING

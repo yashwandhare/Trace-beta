@@ -32,7 +32,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
-import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -48,9 +47,10 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentWidth
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.filled.ThumbUp
@@ -74,7 +74,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -150,6 +149,8 @@ fun ChatPanel(
   showAudioPicker: Boolean = false,
   voiceButton: @Composable () -> Unit = {},
   emptyStateComposable: @Composable (Model) -> Unit = {},
+  // Voice (PTT) messages use this callback; defaults to onSendMessage.
+  onSendVoiceMessage: (Model, List<ChatMessage>) -> Unit = onSendMessage,
 ) {
   val uiState by viewModel.uiState.collectAsState()
   val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
@@ -191,11 +192,11 @@ fun ChatPanel(
       audioClipMessageCount
     }
 
-  var curMessage by remember { mutableStateOf("") } // Correct state
+  var curMessage by remember { mutableStateOf("") }
   val focusManager = LocalFocusManager.current
 
-  // List state to control scrolling.
-  val listState = rememberScrollState()
+  // LazyListState — enables virtualised (off-screen items not composed) rendering.
+  val listState = rememberLazyListState()
   val density = LocalDensity.current
   var showBenchmarkConfigsDialog by remember { mutableStateOf(false) }
   val benchmarkMessage: MutableState<ChatMessage?> = remember { mutableStateOf(null) }
@@ -213,29 +214,15 @@ fun ChatPanel(
 
   var showImageLimitBanner by remember { mutableStateOf(false) }
 
-  // Stores the heights of the items in the list, indexed by the item index.
-  val itemHeights = remember { mutableStateMapOf<Int, Int>() }
-
   // Turn messages into a derived state to trigger updates when the list is updated.
   val currentMessages by rememberUpdatedState(messages)
 
-  // Stores the height of the viewport in pixels.
-  var viewportHeightPx by remember { mutableIntStateOf(0) }
-
   // Stores if the list is at the scrollable area's bottom.
-  //
-  // It will only be updated when the state holds for at least 500ms to improve user experience.
   var isAtBottom by remember { mutableStateOf(true) }
   LaunchedEffect(listState) {
-    snapshotFlow {
-        // Read the raw scroll state here
-        !listState.canScrollForward
-      }
+    snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index == (listState.layoutInfo.totalItemsCount - 1) }
       .collectLatest { rawAtBottom ->
-        if (!rawAtBottom) {
-          delay(500)
-        }
-        // Update the actual state.
+        if (!rawAtBottom) delay(500)
         isAtBottom = rawAtBottom
       }
   }
@@ -248,36 +235,6 @@ fun ChatPanel(
       }
     }
 
-  // Stores the dynamic bottom padding required to push the last user message to the top edge of the
-  // view.
-  val dynamicBottomPadding by remember {
-    derivedStateOf {
-      if (lastUserMessageIndex == -1 || viewportHeightPx == 0) return@derivedStateOf 0.dp
-
-      // Sum the heights of the last user message and everything below it.
-      //
-      // If the message immediately preceding the last user message is an image or audio,
-      // include it in the height calculation by starting one index earlier.
-      var bottomContentHeight = 0
-      var startIndex = lastUserMessageIndex
-      if (startIndex > 0) {
-        val prevMessage = currentMessages.getOrNull(startIndex - 1)
-        if (
-          prevMessage != null &&
-            (prevMessage is ChatMessageImage || prevMessage is ChatMessageAudioClip)
-        ) {
-          startIndex -= 1
-        }
-      }
-      for (i in startIndex until currentMessages.size) {
-        bottomContentHeight += itemHeights[i] ?: 0
-      }
-
-      // The padding required to push the last user message to the top.
-      val paddingPx = maxOf(0, viewportHeightPx - bottomContentHeight)
-      with(density) { paddingPx.toDp() }
-    }
-  }
 
   // Nested scroll connection to handle scrolling behavior.
   val nestedScrollConnection = remember {
@@ -308,19 +265,11 @@ fun ChatPanel(
     showErrorDialog = modelInitializationStatus?.status == ModelInitializationStatusType.ERROR
   }
 
-  // Scroll to the bottom when the last user message index changes (i.e. when a new user prompt is
-  // sent).
-  //
-  // Due to the calculation of `dynamicBottomPadding`, the new user message will be positioned at
-  // the top edge of the view when list scrolled all the way to the bottom.
+  // Scroll to bottom when a new user message arrives.
   LaunchedEffect(lastUserMessageIndex) {
     if (lastUserMessageIndex != -1) {
-      val unused = awaitFrame()
-      scrollToBottom(
-        listState = listState,
-        animate = true,
-        animationDurationMs = SCROLL_ANIMATION_DURATION_MS * 2,
-      )
+      awaitFrame()
+      scrollToBottom(listState = listState, animate = true)
     }
   }
 
@@ -335,9 +284,7 @@ fun ChatPanel(
               stiffness = Spring.StiffnessLow,
               visibilityThreshold = IntOffset.VisibilityThreshold,
             )
-        ) {
-          it
-        } + fadeIn(animationSpec = spring(stiffness = Spring.StiffnessLow)),
+        ) { it } + fadeIn(animationSpec = spring(stiffness = Spring.StiffnessLow)),
       exit = fadeOut(),
       modifier = Modifier.graphicsLayer { alpha = 0.8f },
     ) {
@@ -349,22 +296,20 @@ fun ChatPanel(
     ) {
       Box(
         contentAlignment = Alignment.BottomCenter,
-        modifier =
-          Modifier.weight(1f).onSizeChanged {
-            // Update the viewport height when the size of the box changes.
-            viewportHeightPx = it.height
-          },
+        modifier = Modifier.weight(1f),
       ) {
         val cdChatPanel = stringResource(R.string.cd_chat_panel)
-        Column(
+        // LazyColumn only composes visible items — eliminates the O(n) layout cost
+        // of the previous Column+verticalScroll approach for long chat sessions.
+        LazyColumn(
+          state = listState,
           modifier =
             Modifier.fillMaxSize()
               .nestedScroll(nestedScrollConnection)
-              .verticalScroll(state = listState)
               .semantics { contentDescription = cdChatPanel },
           verticalArrangement = Arrangement.Top,
         ) {
-          messages.forEachIndexed { index, message ->
+          itemsIndexed(messages, key = { index, _ -> index }) { index, message ->
             val imageHistoryCurIndex = remember { mutableIntStateOf(0) }
             var hAlign: Alignment.Horizontal = Alignment.End
             var backgroundColor: Color = MaterialTheme.customColors.userBubbleBgColor
@@ -403,15 +348,6 @@ fun ChatPanel(
             Column(
               modifier =
                 Modifier.fillMaxWidth()
-                  // Update the height of the item in the list when the size changes.
-                  //
-                  // Need to put this modifier here to get the correct size that includes the
-                  // paddings.
-                  .onSizeChanged { size ->
-                    if (itemHeights[index] != size.height) {
-                      itemHeights[index] = size.height
-                    }
-                  }
                   .padding(
                     start = 16.dp + extraPaddingStart,
                     end = 12.dp + extraPaddingEnd,
@@ -593,12 +529,6 @@ fun ChatPanel(
               }
             }
           }
-
-          // The spacer at the bottom to push the content up so that the last user message will be
-          // positioned at the top edge of the view when the list is scrolled to the bottom.
-          //
-          // See how `dynamicBottomPadding` is calculated above.
-          Spacer(modifier = Modifier.height(dynamicBottomPadding).fillMaxWidth())
         }
 
         SnackbarHost(hostState = snackbarHostState, modifier = Modifier.padding(vertical = 4.dp))
@@ -725,6 +655,11 @@ fun ChatPanel(
         onImageLimitExceeded = { showImageLimitBanner = true },
         onModelNotSupportImage = { customErrorMessage = modelNotSupportImageMsg },
         onModelNotSupportAudio = { customErrorMessage = modelNotSupportAudioMsg },
+        onSendVoiceMessage = {
+          onSendVoiceMessage(selectedModel, it)
+          curMessage = ""
+          focusManager.clearFocus()
+        },
       )
     }
   }
@@ -756,16 +691,15 @@ fun ChatPanel(
 }
 
 private suspend fun scrollToBottom(
-  listState: ScrollState,
+  listState: androidx.compose.foundation.lazy.LazyListState,
   animate: Boolean = false,
   animationDurationMs: Int = SCROLL_ANIMATION_DURATION_MS,
 ) {
+  val target = listState.layoutInfo.totalItemsCount - 1
+  if (target < 0) return
   if (animate) {
-    listState.animateScrollTo(
-      listState.maxValue,
-      animationSpec = tween(durationMillis = animationDurationMs, easing = FastOutSlowInEasing),
-    )
+    listState.animateScrollToItem(target)
   } else {
-    listState.scrollTo(listState.maxValue)
+    listState.scrollToItem(target)
   }
 }

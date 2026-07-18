@@ -189,6 +189,8 @@ fun MessageInputText(
   onImageLimitExceeded: () -> Unit = {},
   onModelNotSupportImage: () -> Unit = {},
   onModelNotSupportAudio: () -> Unit = {},
+  // Voice-originated messages (PTT) use this callback so TTS can be enabled.
+  onSendVoiceMessage: (List<ChatMessage>) -> Unit = onSendMessage,
 ) {
   val context = LocalContext.current
   val lifecycleOwner = LocalLifecycleOwner.current
@@ -756,7 +758,8 @@ fun MessageInputText(
                         voiceViewModel.startSpeechRecognition(
                           onDone = { text ->
                             if (text.isNotBlank()) {
-                              onSendMessage(
+                              // Use onSendVoiceMessage so the ViewModel knows this is voice.
+                              onSendVoiceMessage(
                                 createMessagesToSend(
                                   pickedImages = pickedImages,
                                   audioClips = pickedAudioClips,
