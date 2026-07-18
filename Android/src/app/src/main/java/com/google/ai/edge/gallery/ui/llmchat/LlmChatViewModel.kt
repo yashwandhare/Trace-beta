@@ -62,6 +62,19 @@ open class LlmChatViewModelBase(
   private val _uiSystemPrompt = MutableStateFlow("")
   val uiSystemPrompt = _uiSystemPrompt.asStateFlow()
 
+  private var ttsManager: com.google.ai.edge.gallery.voice.TtsManager? = null
+
+  fun initTts(context: android.content.Context) {
+      if (ttsManager == null) {
+          ttsManager = com.google.ai.edge.gallery.voice.TtsManager(context)
+      }
+  }
+
+  override fun onCleared() {
+      super.onCleared()
+      ttsManager?.shutdown()
+  }
+
   /**
    * Sets the system prompt in the UI.
    *
@@ -262,6 +275,12 @@ open class LlmChatViewModelBase(
                         ),
                       type = ChatMessageType.THINKING,
                     )
+                  }
+                }
+                if (finalLastMessage?.type == ChatMessageType.TEXT) {
+                  val textMsg = finalLastMessage as ChatMessageText
+                  if (textMsg.content.isNotEmpty()) {
+                    ttsManager?.speak(textMsg.content)
                   }
                 }
                 setInProgress(false)

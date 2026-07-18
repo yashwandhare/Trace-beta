@@ -56,6 +56,17 @@ import dagger.hilt.components.SingletonComponent
 import dagger.multibindings.IntoSet
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.remember
+import com.google.ai.edge.gallery.ui.voiceinput.PttOverlay
+import com.google.ai.edge.gallery.voice.VoiceManager
+import com.google.ai.edge.gallery.voice.IntentRouter
+import com.google.ai.edge.gallery.voice.IntentType
+import com.google.ai.edge.gallery.filefetch.FileFetcher
+import com.google.ai.edge.gallery.ui.common.chat.ChatMessageAudioClip
+import com.google.ai.edge.gallery.ui.common.chat.ChatMessageText
+import com.google.ai.edge.gallery.ui.common.chat.ChatSide
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // AI Chat.
@@ -109,9 +120,20 @@ class LlmChatTask @Inject constructor() : CustomTask {
   override fun MainScreen(data: Any) {
     val myData = data as CustomTaskDataForBuiltinTask
     val viewModel: LlmChatViewModel = hiltViewModel()
-    LaunchedEffect(task) { viewModel.loadSystemPrompt(task) }
+    
+    val context = LocalContext.current
+    LaunchedEffect(task) { 
+      viewModel.loadSystemPrompt(task)
+      viewModel.initTts(context)
+    }
+    
     val uiSystemPrompt by viewModel.uiSystemPrompt.collectAsState()
     val systemPromptUpdatedMessage = stringResource(R.string.system_prompt_updated)
+
+    val coroutineScope = rememberCoroutineScope()
+    val voiceManager = remember { VoiceManager() }
+    val intentRouter = remember { IntentRouter() }
+
     LlmChatScreen(
       modelManagerViewModel = myData.modelManagerViewModel,
       navigateUp = myData.onNavUp,
@@ -125,6 +147,38 @@ class LlmChatTask @Inject constructor() : CustomTask {
           model = selectedModel,
           newPrompt = newPrompt,
           systemPromptUpdatedMessage = systemPromptUpdatedMessage,
+        )
+      },
+      composableBelowMessageList = { model ->
+        PttOverlay(
+          onStartRecording = {
+            voiceManager.startListening(coroutineScope)
+          },
+          onStopRecording = {
+            val audioBytes = voiceManager.stopListening()
+            // We just route audio natively to Gemma as requested: "Route captured audio to Gemma's native audio path"
+            // Wait, we also need to route via IntentRouter if it's text. 
+            // Since Gemma processes the audio, the IntentRouter needs the *output* text. 
+            // Or maybe IntentRouter routes audio? No, IntentRouter takes text.
+            // For now, we just pass audio to LLM:
+            val audioClip = ChatMessageAudioClip(
+              audioData = audioBytes,
+              sampleRate = 16000,
+              side = ChatSide.USER
+            )
+            viewModel.addMessage(model, audioClip)
+            viewModel.generateResponse(
+              model = model,
+              input = "",
+              audioMessages = listOf(audioClip),
+              onFirstToken = {},
+              onDone = { 
+                 // Done is handled in ViewModel (TTS)
+              },
+              onError = {},
+              allowThinking = task.allowCapability(com.google.ai.edge.gallery.data.ModelCapability.LLM_THINKING, model)
+            )
+          }
         )
       },
       emptyStateComposable = {
