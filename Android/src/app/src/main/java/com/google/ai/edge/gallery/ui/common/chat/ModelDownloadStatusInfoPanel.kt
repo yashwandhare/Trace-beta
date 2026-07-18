@@ -48,6 +48,7 @@ fun ModelDownloadStatusInfoPanel(
   model: Model,
   task: Task,
   modelManagerViewModel: ModelManagerViewModel,
+  onBenchmarkClicked: (Model) -> Unit = {},
 ) {
   Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
     com.google.ai.edge.gallery.ui.common.modelitem.ModelItem(
@@ -55,7 +56,7 @@ fun ModelDownloadStatusInfoPanel(
       task = task,
       modelManagerViewModel = modelManagerViewModel,
       onModelClicked = {},
-      onBenchmarkClicked = {},
+      onBenchmarkClicked = onBenchmarkClicked,
       modifier = Modifier.padding(16.dp).fillMaxWidth(),
       canExpand = false,
       expanded = true
