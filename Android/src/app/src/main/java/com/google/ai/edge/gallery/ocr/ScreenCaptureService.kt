@@ -30,6 +30,7 @@ class ScreenCaptureService : Service() {
     private var imageReader: ImageReader? = null
     private val scope = CoroutineScope(Dispatchers.IO)
     private val helper = OcrHelper()
+    private var latestBitmap: Bitmap? = null
     
     companion object {
         const val EXTRA_RESULT_CODE = "RESULT_CODE"
@@ -41,12 +42,29 @@ class ScreenCaptureService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        
+        // Listen for capture requests
+        scope.launch {
+            ScreenExplainManager.captureRequests.collect {
+                latestBitmap?.let { bmp ->
+                    try {
+                        val result = helper.recognizeText(bmp)
+                        ScreenExplainManager.emitResult(result.rawText)
+                    } catch (e: Exception) {
+                        Log.e("ScreenCaptureService", "OCR failed", e)
+                        ScreenExplainManager.emitResult("Failed to read screen")
+                    }
+                } ?: run {
+                    ScreenExplainManager.emitResult("No screen captured yet")
+                }
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Screen Capture")
-            .setContentText("Capturing screen for OCR...")
+            .setContentTitle("Screen Capture Active")
+            .setContentText("Agent is analyzing your screen...")
             .setSmallIcon(android.R.drawable.ic_menu_camera)
             .build()
             
@@ -61,8 +79,13 @@ class ScreenCaptureService : Service() {
         val resultData = intent?.getParcelableExtra<Intent>(EXTRA_RESULT_DATA)
 
         if (resultCode != 0 && resultData != null) {
-            startCapture(resultCode, resultData)
+            // Only start projection if not already started
+            if (mediaProjection == null) {
+                startCapture(resultCode, resultData)
+            }
+            ScreenExplainManager.isServiceRunning = true
         } else {
+            // Stop service if started without valid projection data
             stopSelf()
         }
 
@@ -80,51 +103,43 @@ class ScreenCaptureService : Service() {
 
         imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
         
-        var isCaptured = false
-
         imageReader?.setOnImageAvailableListener({ reader ->
-            if (isCaptured) return@setOnImageAvailableListener
-            
             val image = reader.acquireLatestImage() ?: return@setOnImageAvailableListener
-            isCaptured = true
             
-            val planes = image.planes
-            val buffer = planes[0].buffer
-            val pixelStride = planes[0].pixelStride
-            val rowStride = planes[0].rowStride
-            val rowPadding = rowStride - pixelStride * width
+            try {
+                val planes = image.planes
+                val buffer = planes[0].buffer
+                val pixelStride = planes[0].pixelStride
+                val rowStride = planes[0].rowStride
+                val rowPadding = rowStride - pixelStride * width
 
-            val bitmap = Bitmap.createBitmap(
-                width + rowPadding / pixelStride,
-                height,
-                Bitmap.Config.ARGB_8888
-            )
-            bitmap.copyPixelsFromBuffer(buffer)
-            image.close()
-
-            // Process OCR
-            scope.launch {
-                try {
-                    val result = helper.recognizeText(bitmap)
-                    ScreenExplainManager.emitResult(result.rawText)
-                } catch (e: Exception) {
-                    Log.e("ScreenCapture", "OCR failed", e)
-                    ScreenExplainManager.emitResult("")
-                } finally {
-                    stopSelf()
-                }
+                val bitmap = Bitmap.createBitmap(
+                    width + rowPadding / pixelStride,
+                    height,
+                    Bitmap.Config.ARGB_8888
+                )
+                bitmap.copyPixelsFromBuffer(buffer)
+                
+                // Crop out the padding
+                val croppedBitmap = Bitmap.createBitmap(bitmap, 0, 0, width, height)
+                bitmap.recycle()
+                
+                val oldBitmap = latestBitmap
+                latestBitmap = croppedBitmap
+                oldBitmap?.recycle()
+                
+            } catch (e: Exception) {
+                Log.e("ScreenCaptureService", "Image extraction failed", e)
+            } finally {
+                image.close()
             }
         }, null)
 
         virtualDisplay = mediaProjection?.createVirtualDisplay(
             "ScreenCapture",
-            width,
-            height,
-            density,
+            width, height, density,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            imageReader?.surface,
-            null,
-            null
+            imageReader?.surface, null, null
         )
     }
 
@@ -140,9 +155,12 @@ class ScreenCaptureService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        ScreenExplainManager.isServiceRunning = false
         virtualDisplay?.release()
         imageReader?.close()
         mediaProjection?.stop()
+        latestBitmap?.recycle()
+        latestBitmap = null
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

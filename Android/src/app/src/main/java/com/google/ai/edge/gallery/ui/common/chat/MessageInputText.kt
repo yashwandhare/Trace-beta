@@ -806,8 +806,28 @@ fun MessageInputText(
                                     )
                                   )
                                 } else if (intentResult.type == com.google.ai.edge.gallery.voice.IntentType.SCREEN_EXPLAIN) {
-                                  val projectionManager = context.getSystemService(android.content.Context.MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
-                                  mediaProjectionLauncher.launch(projectionManager.createScreenCaptureIntent())
+                                  if (com.google.ai.edge.gallery.ocr.ScreenExplainManager.isServiceRunning) {
+                                      com.google.ai.edge.gallery.ocr.ScreenExplainManager.requestCapture()
+                                  } else {
+                                      val projectionManager = context.getSystemService(android.content.Context.MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
+                                      mediaProjectionLauncher.launch(projectionManager.createScreenCaptureIntent())
+                                  }
+                                } else if (intentResult.type == com.google.ai.edge.gallery.voice.IntentType.FILE_FETCH) {
+                                  val handler = com.google.ai.edge.gallery.filefetch.DefaultIntentFileFetchHandler(context)
+                                  val result = handler.handleFindFile(intentResult.extractedFileName ?: "")
+                                  if (result != null) {
+                                      val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                          setDataAndType(result.uri, context.contentResolver.getType(result.uri) ?: "*/*")
+                                          addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                      }
+                                      try {
+                                          context.startActivity(viewIntent)
+                                      } catch (e: Exception) {
+                                          android.widget.Toast.makeText(context, "No app found to open this file", android.widget.Toast.LENGTH_SHORT).show()
+                                      }
+                                  } else {
+                                      android.widget.Toast.makeText(context, "Could not find file: ${intentResult.extractedFileName}", android.widget.Toast.LENGTH_SHORT).show()
+                                  }
                                 }
                                 pickedImages = listOf()
                                 pickedAudioClips = listOf()
