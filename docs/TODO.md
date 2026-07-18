@@ -66,41 +66,44 @@ no screen capture, no RAG yet.)
 
 ---
 
-## COMPLETED: Phase 1 — Core Voice Loop
+## COMPLETED: Phase 1 — Core Voice Loop & AI Chat (Module)
 
 ### Dev A
 - [x] Wire push-to-talk capture start/stop (changed to tap-to-toggle)
 - [x] Route captured audio to Gemma's native audio path (used text via Android SpeechRecognition)
 - [x] Wire TTS output
 - [x] Build minimal rule-based intent router
+- [ ] Extend AI Chat logic to handle explicit file and image attachments as RAG/processing inputs
 
 ### Dev B
 - [x] Build push-to-talk button UI (idle/listening/processing states)
-- [x] Begin File Fetch: isolated module
+- [ ] Implement AI Chat UI for explicitly attaching files and images from the device
 
 ### Merge checkpoint
-- [x] Dev A merges `dev-b` → `main`
-- [x] Dev A merges `dev-a` → `main`
-- [x] Dev A builds and tests combined `main`
-- [x] Gate met? → Phase 1 complete.
+- [ ] Dev A merges `dev-b` → `main`
+- [ ] Dev A merges `dev-a` → `main`
+- [ ] Dev A builds and tests combined `main`
+- [ ] Gate met? → Phase 1 complete.
 
 ---
 
-## COMPLETED: Phase 2 — Screen Explain
+## COMPLETED: Phase 2 — Screen Explain & Vision (Module)
 
 ### Dev A
 - [x] MediaProjection permission flow
 - [x] Screen capture → Gemma vision + voice question → response (Continuous Gemini Live mode implemented)
+- [ ] Wire device camera capture logic for the new Vision module (scan-and-chat)
 
 ### Dev B
-- [x] Finish File Fetch, connect to intent router's direct-action path
+- [ ] Build the new Vision module homescreen entry and camera capture UI
+- [ ] Build the chat overlay for Vision (taking a photo of the real world and asking about it)
 - [x] OCR quality test pass on real sample notes, report findings
 
 ### Merge checkpoint
-- [x] Dev A merges `dev-b` → `main`
-- [x] Dev A merges `dev-a` → `main`
-- [x] Dev A builds and tests combined `main`
-- [x] Gate met? → Phase 2 complete.
+- [ ] Dev A merges `dev-b` → `main`
+- [ ] Dev A merges `dev-a` → `main`
+- [ ] Dev A builds and tests combined `main`
+- [ ] Gate met? → Phase 2 complete.
 
 ---
 
@@ -117,18 +120,18 @@ no screen capture, no RAG yet.)
 
 ---
 
-## ACTIVE PHASE: Phase 3 — Notes RAG Pipeline
+## ACTIVE PHASE: Phase 3 — RAG (Module)
 (Highest-risk phase — full detail in `/ROADMAP.md`.)
 
 ### Dev A
 - [ ] Qdrant Edge Rust crate for Android + JNI bridge
 - [ ] Embedding pipeline
-- [ ] End-to-end notes → OCR → embed → index → query → quiz/summary
+- [ ] End-to-end: explicitly attached notes → OCR → embed → index → query → quiz/summary
 - [ ] Go/no-go call on JNI integration — log outcome in `/DECISIONS.md`
 
 ### Dev B
 - [ ] Quiz/Flashcard UI in Compose, built against a `QuizItem` mock data shape Dev A defines first
-- [ ] Report OCR findings from Phase 2
+- [x] Report OCR findings from Phase 2
 
 ### Dev C (If joining)
 - [ ] Coordinate with Dev A and Dev B on RAG pipeline data structures
@@ -138,12 +141,29 @@ no screen capture, no RAG yet.)
 
 ---
 
-## LATER: Phase 4 — Integration, Polish, Demo Prep
+## LATER: Phase 4 — Memory & Schedules (Modules)
 (Do not start until Phase 3 gate is confirmed met. Full detail in `/ROADMAP.md`.)
 
 ### Dev A
-- [ ] File Summarize feature
-- [ ] Full integration pass on `main`
+- [ ] Build the Memory structured data store (local database/preferences) for user-authored and system-authored entries
+- [ ] Build the Schedules module backend (AlarmManager / WorkManager, Notification Channels, surviving OS process death)
+- [ ] Wire generation of schedules from scanned Vision prescriptions or attached Chat documents into Memory and the scheduling system
+- [ ] Implement Quiz-from-schedule logic (triggering RAG quiz via AlarmManager)
+
+### Dev B
+- [ ] Build the Memory sidebar UI (viewing, editing, and adding user-authored and system-authored schedule entries)
+- [ ] Build the Schedules list UI and notification interaction flows
+- [ ] UI polish pass across all screens built so far
+
+### Merge checkpoint — same pattern as above.
+
+---
+
+## LATER: Phase 5 — Integration, Polish, Demo Prep
+(Do not start until Phase 4 gate is confirmed met. Full detail in `/ROADMAP.md`.)
+
+### Dev A
+- [ ] Full integration pass on `main` across all 5 modules
 - [ ] Demo script rehearsal
 - [ ] Airplane-mode full test run, every feature
 
