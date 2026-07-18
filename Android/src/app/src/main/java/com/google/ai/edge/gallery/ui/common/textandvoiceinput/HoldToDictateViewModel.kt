@@ -85,6 +85,11 @@ class HoldToDictateViewModel @Inject constructor(@ApplicationContext private val
     }
   }
 
+  override fun onCleared() {
+    super.onCleared()
+    speechRecognizer.destroy()
+  }
+
   fun cancelSpeechRecognition() {
     setRecognizing(recognizing = false)
   }

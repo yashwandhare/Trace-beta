@@ -413,7 +413,11 @@ fun MessageInputText(
                 pickedImages = pickedImages,
                 audioClips = pickedAudioClips,
                 text = text.trim(),
-              )
+              ).map { message ->
+                if (message is ChatMessageText) {
+                  ChatMessageText(message.content, message.side, data = com.google.ai.edge.gallery.voice.InteractionOrigin.VOICE)
+                } else message
+              }
             )
           } else if (intentResult.type == com.google.ai.edge.gallery.voice.IntentType.SCREEN_EXPLAIN) {
             com.google.ai.edge.gallery.ocr.ScreenExplainManager.requestCapture(

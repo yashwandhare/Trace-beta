@@ -279,8 +279,8 @@ fun ChatViewWrapper(
             )
           },
           allowThinking = task.allowCapability(ModelCapability.LLM_THINKING, model),
-          // Determine origin: audio clip messages = voice, else text keyboard.
-          interactionOrigin = if (audioMessages.isNotEmpty()) InteractionOrigin.VOICE else InteractionOrigin.TEXT,
+          // Determine origin: audio clip messages = voice, OR if the text message is marked as STT.
+          interactionOrigin = if (audioMessages.isNotEmpty() || chatMessageText?.data == InteractionOrigin.VOICE) InteractionOrigin.VOICE else InteractionOrigin.TEXT,
         )
 
         val activeSkills = getActiveSkills()
