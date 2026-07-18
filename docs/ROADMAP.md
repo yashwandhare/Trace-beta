@@ -68,44 +68,36 @@ confirmed working by Dev A.
 
 ---
 
-## Phase 1 — Core Voice Loop
+## Phase 1 — Core Voice Loop & AI Chat (Module)
 
 **Dev A:**
 - [ ] Wire push-to-talk button behavior (capture start/stop)
 - [ ] Route captured audio to Gemma's native audio path
 - [ ] Wire TTS for spoken responses
 - [ ] Build minimal rule-based intent router (simple command vs. needs-Gemma)
+- [ ] Extend AI Chat logic to handle explicit file and image attachments as RAG/processing inputs
 
 **Dev B:**
-- [ ] Build the push-to-talk button UI component itself (visual state: idle / listening / processing —
-      Compose UI only, wired to callbacks Dev A's code will trigger, not implementing the audio capture
-      logic)
-- [ ] Begin File Fetch feature: Storage Access Framework / MediaStore lookup-by-filename, as an isolated
-      module with its own function signature (e.g., `fun findFile(query: String): FileResult?`) — no
-      dependency on model/voice/router code yet
+- [ ] Build the push-to-talk button UI component itself (visual state: idle / listening / processing)
+- [ ] Implement AI Chat UI for explicitly attaching files and images from the device
 
-**Gate:** Press the button, ask a spoken question with no on-screen content involved, get a spoken answer
-back, end to end, offline. Merged to `main`, confirmed working.
+**Gate:** Press the button, ask a spoken question, get a spoken answer back. Attach a file and ask about it. Merged to `main`, confirmed working.
 
 ---
 
-## Phase 2 — Screen Explain
+## Phase 2 — Screen Explain & Vision (Module)
 
 **Dev A:**
-- [ ] MediaProjection permission flow implemented and tested
+- [ ] MediaProjection permission flow implemented and tested for Screen Explain
 - [ ] Screen capture → image passed to Gemma alongside the voice question
-- [ ] Response covers both spoken and on-screen text (on-screen text rendering can hand off to a simple
-      Dev B-built component — coordinate the interface before Dev B starts it)
+- [ ] Wire device camera capture logic for the new Vision module (scan-and-chat)
 
 **Dev B:**
-- [ ] Continue/finish File Fetch feature — connect it to the intent router's "simple/direct action" path
-      once Dev A confirms the router's expected interface for direct actions
-- [ ] Begin OCR quality test pass: run OCR against real sample scanned/handwritten notes (Dev A supplies
-      or points to the OCR call path), report accuracy findings back — this is a validation task, not new
-      pipeline code
+- [ ] Build the new Vision module homescreen entry and camera capture UI
+- [ ] Build the chat overlay for Vision (taking a photo of the real world and asking about it)
+- [ ] Begin OCR quality test pass against real sample scanned/handwritten notes
 
-**Gate:** Point the app at a real screen, ask a real question about it, get a correct answer — live,
-offline, on the real device. File Fetch working via voice command. Merged to `main`, confirmed working.
+**Gate:** Screen Explain works live on-device. Vision module opens camera, captures physical world object, and correctly answers questions about it. Merged to `main`, confirmed working.
 
 ---
 
@@ -116,53 +108,45 @@ offline, on the real device. File Fetch working via voice command. Merged to `ma
 - [ ] Fix Intent Router to handle typed inputs and correctly parse commands
 - [ ] Fix Screen Explain MediaProjection lifecycle and ensure Gemma receives the captured screen image
 
-**Gate:** Screen Explain works continuously without crashing, TTS responds fast and only when appropriate, File Fetch opens files successfully. Merged to `main`, confirmed working.
+**Gate:** Screen Explain works continuously without crashing, TTS responds fast and only when appropriate. Merged to `main`, confirmed working.
 
 ---
 
-## Phase 3 — Notes RAG Pipeline (highest technical risk — Dev A owns this fully)
+## Phase 3 — RAG (Module)
 
 **Dev A:**
 - [ ] Qdrant Edge Rust crate compiled for Android target
 - [ ] Minimal JNI bridge: index test documents, run a query, confirm results reach Kotlin correctly
 - [ ] Embedding pipeline wired (FastEmbed or on-device embeddings)
-- [ ] End-to-end: notes → OCR → embed → index → voice query → retrieval → Gemma-generated quiz/summary
-- [ ] **Go/no-go call on this integration** — if not working cleanly within the time budgeted for this
-      phase today, switch to the fallback (pure-Kotlin vector search library, or no-retrieval
-      "summarize this one note" fallback) and log the call in `/DECISIONS.md`
+- [ ] End-to-end: explicitly attached notes → OCR → embed → index → voice query → retrieval → Gemma-generated quiz/summary
+- [ ] **Go/no-go call on this integration** — if not working cleanly, switch to fallback (pure-Kotlin vector search or single-note summarize)
 
 **Dev B:**
-- [ ] Build Quiz/Flashcard UI screens in Compose — question card, answer reveal, right/wrong feedback,
-      progress through a set. Build against a **mock/sample data shape** Dev A defines up front (e.g., a
-      `QuizItem` data class with question/answer/options fields) so this can be built and tested fully
-      independently of whether the RAG pipeline is ready yet
+- [ ] Build Quiz/Flashcard UI screens in Compose (question card, answer reveal, right/wrong feedback). Build against a mock data shape.
 - [ ] Finish OCR quality findings from Phase 2, report to Dev A
 
 **Dev C (If joining):**
 - [ ] Support Dev A in JNI bridge development and embedding pipeline validation
 - [ ] Cross-check RAG data structures between Dev A's backend and Dev B's UI models
 
-**Gate:** Voice-triggered quiz generation from real notes, rendered in the Dev B-built UI, working
-offline. If Dev A's RAG pipeline hit the fallback path, the gate is: fallback feature (e.g.,
-single-note summarize) working end to end instead. Merged to `main`, confirmed working.
+**Gate:** Voice-triggered quiz generation from explicitly attached notes, rendered in UI, working offline. Merged to `main`, confirmed working.
 
 ---
 
-## Phase 4 — Integration, Polish, Demo Prep
+## Phase 4 — Memory & Schedules (Modules)
 
 **Dev A:**
-- [ ] File Summarize feature (OCR + Gemma on a located file)
-- [ ] Full integration pass across all features on combined `main`
-- [ ] Demo script rehearsal — see `/PRD.md` §6 Success Criteria
-- [ ] Airplane-mode full test run across every feature — confirm zero network dependency
+- [ ] Build the Memory structured data store (local database/preferences) with read/write paths for both user-authored and system-authored entries
+- [ ] Build the Schedules module backend (AlarmManager / WorkManager, Notification Channels, surviving OS process death)
+- [ ] Wire generation of schedules from scanned Vision prescriptions or attached Chat documents into the Memory store and scheduling system
+- [ ] Implement Quiz-from-schedule logic (triggering RAG quiz via AlarmManager)
 
 **Dev B:**
+- [ ] Build the Memory sidebar UI (viewing, editing, and adding user-authored and system-authored schedule entries)
+- [ ] Build the Schedules list UI and notification interaction flows
 - [ ] UI polish pass across all screens built so far
-- [ ] Run full QA checklist (see `/TODO.md`) across every feature, log bugs for Dev A to triage
-- [ ] Support demo rehearsal (e.g., operate a second device to simulate a live interaction, if useful)
 
-**Gate:** All P0 features work reliably, live, offline, multiple times in a row. This is the end state
-for today's sprint.
+**Gate:** User can add memory entries in sidebar. User can scan a prescription in Vision, ask for a reminder, which populates a schedule in Memory and triggers a reliable Android notification. Merged to `main`.
 
 ---
 
@@ -172,3 +156,4 @@ for today's sprint.
 - Proactive organization & reminders
 - True always-on wake-word
 - Broader file-type support
+- Custom user-created homescreen modules (explicitly cut)

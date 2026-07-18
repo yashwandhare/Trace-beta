@@ -122,3 +122,12 @@ the vector-store index once Phase 3 is complete. Do not add new capability to th
 it minimal so Phase 3 doesn't have to unpick it later.
 
 **Decision owner:** confirmed with user (2026-07-18) before implementation.
+
+### Module Restructure (2026-07-18)
+The product scope was restructured from a flat feature list into five distinct modules: AI Chat, Vision, RAG, Memory, and Schedules. This provides better organization and clarifies the user interaction paradigm:
+
+1. **AI Chat** serves as the primary conversational hub, expanded to accept file and image attachments directly from the device.
+2. **Vision** introduces a new physical-world, camera-first interaction paradigm, separating it cleanly from the MediaProjection-based Screen Explain feature. 
+3. **RAG Ingestion Clarification:** RAG ingestion is strictly triggered by the user explicitly attaching files in AI Chat or directly selecting them. It will *never* perform a background scan of device storage. This removes the ambiguity regarding Android 13+ scoped storage limitations — those constraints applied to the old background file fetch, but RAG was never blocked by them.
+4. **Memory** is restricted to a structured store for user-authored guidelines and system-authored schedules. General conversational memory across sessions is explicitly out of scope to avoid unpredictable model state accumulation.
+5. **Schedules** formalizes reminder routines (e.g. medicine schedules derived from a Vision scan) into real Android notifications. This requires robust scheduling architecture (AlarmManager, WorkManager) to survive OS process death and doze mode. Custom user-created homescreen modules were cut to focus on this reliability.

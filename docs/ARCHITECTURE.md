@@ -71,11 +71,10 @@ deliberate architectural choice: Gemma's audio tokens feed into the same forward
 enabling joint reasoning (e.g., a spoken question that references what's currently visible) that a
 pipelined STT-then-LLM approach can't do as cleanly. TTS handles the spoken response side.
 
-### Retrieval layer — Qdrant Edge
-In-process, no-server, embedded vector search engine. Used specifically for the notes RAG feature — notes
-are OCR'd (via Gemma vision, not a separate OCR library, to keep the pipeline unified) and embedded once,
-then indexed locally. A voice query like "quiz me on my DBMS notes" triggers a real semantic retrieval
-over indexed chunks, and Gemma generates the quiz/summary grounded in what's actually retrieved.
+### Retrieval layer — Qdrant Edge (RAG Module)
+In-process, no-server, embedded vector search engine. Used specifically for the RAG module. 
+**Important Ingestion Clarification:** RAG ingestion is strictly via files the user explicitly attaches through AI Chat or selects directly from the device. It never performs a background search of device storage. This means the scoped-storage limitations documented for the old File Fetch feature do not apply to RAG.
+Notes are OCR'd (via Gemma vision) and embedded once, then indexed locally. A voice query like "quiz me on my DBMS notes" triggers a real semantic retrieval over indexed chunks, and Gemma generates the quiz/summary grounded in what's actually retrieved.
 
 - Only available as Python bindings or a Rust crate — no native Kotlin/JNI package exists. Integration
   path: compile the Rust crate for Android, expose a small, contained JNI boundary to Kotlin (index
@@ -85,6 +84,13 @@ over indexed chunks, and Gemma generates the quiz/summary grounded in what's act
 
 ### Semantic File Matcher (Demo Fallback)
 When exact file matches fail, a user-configurable semantic fallback runs (using Gemma vision to classify image candidates). Due to Android 13+ scoped storage limitations, fetching general files (e.g. PDFs) directly from shared storage without a user picker is heavily restricted. Thus, voice-fetch (and the semantic fallback) operates strictly on images from MediaStore and accessible user directories (e.g., Downloads, Screenshots). This scope is configurable in settings to balance thoroughness against the ~0.5s/image latency of the vision model.
+
+### Schedules
+When a prescription or similar is scanned in Vision or attached in AI Chat, the user can ask the model to create a reminder routine. This requires a highly reliable architecture due to strict Android background execution constraints:
+- **Scheduling Backend:** Uses `AlarmManager` for precise, time-critical alarms (e.g., medicine reminders) and `WorkManager` for flexible, deferrable tasks.
+- **Reliability:** The system must survive OS process death and device reboots. This is handled by persisting all schedule data in the Memory store and re-registering alarms on the `BOOT_COMPLETED` broadcast.
+- **Battery Optimization:** Must handle Android Doze mode and App Standby Buckets using `setExactAndAllowWhileIdle` for `AlarmManager` to ensure notifications fire even when the device is asleep.
+- **Notifications:** Triggers real Android Notifications using dedicated Notification Channels to alert the user at the scheduled times.
 
 ### Why voice + visual UI, not voice-only
 Research on voice-only interfaces for low-literacy/general users consistently shows pure voice

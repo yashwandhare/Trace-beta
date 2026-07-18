@@ -38,48 +38,40 @@ Not a mass-market "AI for everyone" pitch. Trace targets:
 This is a real, specific, non-generic audience — not "grandma," not "every Android user." See
 `/CONSTRAINTS.md` for why this scoping is deliberate.
 
-## 4. Core Features
+## 4. Core Modules
 
 Ordered by priority. Build top-down; cut from the bottom under time pressure. See `/ROADMAP.md` for
 phased sequencing and `/TODO.md` for current task breakdown.
 
-### P0 — Screen Explain
-User asks a question about whatever is currently on screen. The app captures the screen (via
-MediaProjection — see `/CONSTRAINTS.md` for why not AccessibilityService), sends it with the spoken
-question to Gemma 4 E2B, and returns a spoken + on-screen answer.
+### P0 — AI Chat (Module)
+The primary interface. Existing text and voice chat, extended with file and image attachment so users can ask questions about an attached document or photo directly in chat. This is the primary ingestion point for RAG. Screen-explain (MediaProjection) remains as a separate feature integrated into the chat experience.
 
-**Example:** "Hey Trace, what does this line in my bank statement mean?"
+**Example:** "Hey Trace, what does this line in my attached bank statement mean?"
 
-### P0 — Notes → Flashcards / Quiz / Summary (RAG)
+### P0 — Vision (Module)
+Camera-based scan-and-chat, accessible from the homescreen. The user photographs something real-world (medicine prescription, product label, etc.) and chats about it. This is distinct from Screen-explain: Vision is the device camera pointed at the physical world.
+*(Stretch goal: Live video chat via voice, not required for first pass).*
+
+**Example:** "What does this nutrition label mean?"
+
+### P0 — RAG (Module — Phase 3)
 User's notes (photographed or typed) are OCR'd and embedded once, indexed locally in Qdrant Edge. Voice
 commands trigger retrieval over that index, and Gemma generates a quiz, flashcard set, or summary
-grounded in the actual retrieved content — not general knowledge.
+grounded in the actual retrieved content.
 
-**Example:** "Hey Trace, quiz me on my DBMS normalization notes."
+**Important:** RAG ingestion is strictly via files the user explicitly attaches through AI Chat or selects directly. It NEVER performs a background search of device storage.
 
-Rendered as a real UI (quiz cards with right/wrong feedback), not spoken-only — see `/ARCHITECTURE.md`
-for the reasoning ("voice-only underperforms" finding).
+### P1 — Memory (Sidebar Feature)
+A structured store the model can always reference. Not a homescreen module, but a sidebar feature with two write paths:
+1. **User-authored:** free-form personal info and custom prompts/guides, entered and edited directly by the user.
+2. **System-authored (Schedules):** created automatically when a schedule is generated. Visible and editable in the Memory screen so wrong entries can be corrected.
+*Note: General conversational memory across chat sessions is explicitly out of scope.*
 
-### P1 — File Fetch
-Direct voice/text file lookup and retrieval — not semantic search, a direct filesystem query via Storage
-Access Framework / MediaStore. **Note:** Due to Android 13+ scoped storage limitations, fetching general files (e.g., PDFs in Downloads) via voice without a system picker is restricted. As a result, the voice-fetch fallback (Semantic File Matcher) is currently limited to images only. File-input via standard picker has no restriction.
+### P1 — Schedules (Module)
+When a prescription or similar is scanned in Vision or attached in AI Chat, the user can ask the model to create a reminder routine with specific times. This writes to Memory as system-authored entries and triggers real Android notifications at the scheduled times.
 
-The Semantic File Matcher scope is user-configurable (Downloads, Screenshots, Documents, and recent images limit) to balance search exhaustiveness against inference latency.
-
-**Example:** "Hey Trace, pull up my driver's license."
-
-### P1 — File Summarize
-Once a file is located (via fetch, or directly named), summarize its content using OCR + Gemma.
-
-### P2 — Form-Fill Assist (stretch goal)
-Surfaces relevant saved information (from an explicit, user-populated data store — not arbitrary file
-search) while a user is filling out a form. **Always shows what it's about to provide and requires
-confirmation.** Never auto-submits. See `/CONSTRAINTS.md` — this is a hard rule, not a style preference.
-
-### P2 — Proactive Organization & Reminders (stretch goal, likely post-hackathon)
-Learns routine patterns well enough to act proactively — e.g., surfacing today's class timetable
-unprompted, or reminding the user to check a specific file on a schedule. Out of scope for the hackathon
-build; documented here because it's part of the pitched vision and Expected Impact.
+### P2 — Quiz-from-schedule (Extension)
+A Schedules-triggered quiz feature for students (e.g., a daily quiz on a topic from a source). This is a natural extension of Schedules + RAG once both exist, not new infrastructure of its own.
 
 ## 5. Explicitly Out of Scope
 
@@ -94,6 +86,8 @@ See `/CONSTRAINTS.md` for the authoritative, agent-facing version of this list. 
 - Object/crop/plant recognition, general vision Q&A about the physical world — not the product, and this
   category is saturated territory (see `/DECISIONS.md` for the research that ruled this out)
 - Multi-device / swarm architectures
+- Custom user-created homescreen modules (turning any feature into a user-defined homescreen tile)
+- General conversational memory across chat sessions (remembering prior conversations)
 
 ## 6. Success Criteria for the Hackathon Build
 
