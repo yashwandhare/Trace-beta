@@ -150,7 +150,23 @@ confirmed working by Dev A.
 
 ---
 
-## Phase 5 — Post-sprint / future scope (not built today)
+## Phase 5 — Integration, Polish, Demo Prep
+
+**Dev A:**
+- [ ] Full integration pass on `main` across all 5 modules
+- [ ] Demo script rehearsal — see `/PRD.md` §6 Success Criteria
+- [ ] Airplane-mode full test run across every feature — confirm zero network dependency
+
+**Dev B:**
+- [ ] UI polish pass across all screens built so far
+- [ ] Run full QA checklist across every feature, log bugs for Dev A to triage
+- [ ] Support demo rehearsal
+
+**Gate:** All modules work reliably, live, offline, multiple times in a row. This is the end state for today's sprint.
+
+---
+
+## Phase 6 — Post-sprint / future scope (not built today)
 
 - Form-Fill Assist (confirmation-gated, per `/CONSTRAINTS.md`)
 - Proactive organization & reminders
