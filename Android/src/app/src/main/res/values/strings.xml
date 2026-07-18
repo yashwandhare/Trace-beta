@@ -30,10 +30,10 @@
   <!-- Status indicator when initializing model. [CHAR_LIMIT=25] -->
   <string name="aichat_initializing_title" translatable="false">Initializing model</string>
   <string name="aichat_initializing_content" translatable="true">Sit tight, this can take up to 1 minute</string>
-  <string name="app_intro" translatable="true">Explore a world of amazing on-device models from</string>
-  <string name="app_name" translatable="false">Google AI Edge Gallery</string>
-  <string name="app_name_first_part" translatable="false">Google AI</string>
-  <string name="app_name_second_part" translatable="false">Edge Gallery</string>
+  <string name="app_intro" translatable="true">Your private, offline AI assistant</string>
+  <string name="app_name" translatable="false">Trace</string>
+  <string name="app_name_first_part" translatable="false">Trace</string>
+  <string name="app_name_second_part" translatable="false"></string>
   <string name="askimage_emptystate_title" translatable="true">Ask Image</string>
   <string name="askimage_emptystate_content" translatable="true">To get started, tap the + below to add an image (max 10 images per chat) and type a prompt to ask a question about it!</string>
   <string name="askimage_emptystate_content_aicore" translatable="true">To get started, tap the + below to add an image (max 1 image per chat) and type a prompt to ask a question about it!</string>
@@ -202,7 +202,7 @@
   <string name="settings_dialog_view_app_terms_of_service" translatable="true">View App Terms of Service</string>
   <string name="settings_dialog_gemma_prohibited_use_policy" translatable="true">Gemma Prohibited Use Policy</string>
   <string name="settings_dialog_firebase_analytics_title" translatable="true">Firebase Analytics</string>
-  <string name="settings_dialog_firebase_analytics_description" translatable="true">Send usage data to help improve AI Edge Gallery</string>
+  <string name="settings_dialog_firebase_analytics_description" translatable="true">Send anonymous usage data to help improve Trace</string>
   <string name="share" translatable="true">Share</string>
   <string name="slide_up_to_cancel" translatable="true">Slide up to cancel</string>
   <string name="system_prompt_placeholder" translatable="true">Enter system instructions (e.g., \"You are a versatile assistant. Provide accurate, context-aware responses in a professional tone.\")</string>
@@ -214,11 +214,11 @@
   <string name="test" translatable="true">Test</string>
   <string name="text_image_generation_text_field_placeholder" translatable="true">Type prompt…</string>
   <string name="text_input_placeholder_llm_chat" translatable="true">Type prompt…</string>
-  <string name="tos_dialog_title_app" translatable="true">Welcome to Google AI Edge Gallery</string>
-  <!-- Body text of the Terms of Service dialog. Contains links to Google Terms of Service and Privacy Policy. [CHAR_LIMIT=NONE] -->
-  <string name="tos_dialog_body" translatable="true">By using this app, you agree to the [Google Terms of Service](https://policies.google.com/terms?hl=en-US).\n\nTo learn what information we collect and why, how we use it, and how to review and update it, please review the [Google Privacy Policy](https://policies.google.com/privacy?hl=en-US).\n\nThis app collects aggregated usage metrics to understand user engagement, such as error messages, app actions, IP inferred approximate location, OS version. This data is processed in accordance with the [Google Privacy Policy](https://policies.google.com/privacy?hl=en-US).\n\nYour use of each model is subject to the applicable model license terms.</string>
-  <!-- Title of the Gemma Terms of Use dialog. [CHAR_LIMIT=NONE] -->
-  <string name="tos_dialog_title_gemma" translatable="true">Gemma Terms of Use</string>
+  <string name="tos_dialog_title_app" translatable="true">Welcome to Trace</string>
+  <!-- Body text of the Terms of Service dialog. [CHAR_LIMIT=NONE] -->
+  <string name="tos_dialog_body" translatable="true">Trace runs fully on-device. No data ever leaves your phone.</string>
+  <!-- Title of the model Terms of Use dialog. [CHAR_LIMIT=NONE] -->
+  <string name="tos_dialog_title_gemma" translatable="true">Model Terms of Use</string>
   <string name="tos_dialog_accept_and_continue_button_label" translatable="true">Accept &amp; continue</string>
   <string name="tos_dialog_agree_and_continue_button_label" translatable="true">Agree &amp; continue</string>
   <string name="try_it" translatable="true">Try it</string>
@@ -373,7 +373,7 @@
   <string name="mcp_tool_revoke_permission_content" translatable="true">Are you sure you want to revoke permission to automatically call this tool?</string>
   <string name="manage_mcp_servers" translatable="true">Manage MCP servers</string>
   <string name="add_mcp_server" translatable="true">Add MCP server</string>
-  <string name="learn_more_about_mcp" translatable="true">Learn more about MCP in Google AI Edge Gallery</string>
+  <string name="learn_more_about_mcp" translatable="true">Learn more about MCP in Trace</string>
   <string name="learn_more_about_mcp_short" translatable="true">Learn more</string>
   <string name="search_mcp_server" translatable="true">Search for an MCP server</string>
   <plurals name="mcp_servers_count" translatable="true">
@@ -641,10 +641,10 @@
   <string name="config_label_number_of_runs" translatable="true">Number of runs</string>
   <!-- Label indicating statistics on a specific accelerator. %1$s is the accelerator name. [CHAR_LIMIT=NONE] -->
   <string name="stats_on_accelerator" translatable="true">Stats on %1$s</string>
-  <!-- First part of Gemma 4 introduction text. [CHAR_LIMIT=NONE] -->
-  <string name="gemma4_intro_part_1" translatable="true">Discover the power of on-device AI models from the </string>
-  <!-- Second part of Gemma 4 introduction text. [CHAR_LIMIT=NONE] -->
-  <string name="gemma4_intro_part_2" translatable="true">, featuring the all-new </string>
+  <!-- Intro text [CHAR_LIMIT=NONE] -->
+  <string name="gemma4_intro_part_1" translatable="true">Powered by </string>
+  <!-- Second part of intro text. [CHAR_LIMIT=NONE] -->
+  <string name="gemma4_intro_part_2" translatable="true"> — running entirely on your device</string>
   <string name="gemma4_label" translatable="false">Gemma 4</string>
   <!-- Label for the 'Show 3D spinner during image gen' option in the model configuration dialog. [CHAR_LIMIT=NONE] -->
   <string name="config_label_show_3d_spinner" translatable="true">Show 3D spinner during image gen</string>

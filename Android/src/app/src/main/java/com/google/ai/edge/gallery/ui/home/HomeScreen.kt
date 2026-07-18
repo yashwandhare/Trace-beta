@@ -126,8 +126,6 @@ import com.google.ai.edge.gallery.ui.common.SwipingText
 import com.google.ai.edge.gallery.ui.common.TaskIcon
 import com.google.ai.edge.gallery.ui.common.buildTrackableUrlAnnotatedString
 import com.google.ai.edge.gallery.ui.common.rememberDelayedAnimationProgress
-import com.google.ai.edge.gallery.ui.common.tos.AppTosDialog
-import com.google.ai.edge.gallery.ui.common.tos.TosViewModel
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import com.google.ai.edge.gallery.ui.theme.customColors
 import com.google.ai.edge.gallery.ui.theme.homePageTitleStyle
@@ -160,7 +158,6 @@ private val PREDEFINED_CATEGORY_ORDER = listOf(Category.LLM.id, Category.EXPERIM
 @Composable
 fun HomeScreen(
   modelManagerViewModel: ModelManagerViewModel,
-  tosViewModel: TosViewModel,
   navigateToTaskScreen: (Task) -> Unit,
   onModelsClicked: () -> Unit,
   onNotificationsClicked: () -> Unit,
@@ -170,7 +167,6 @@ fun HomeScreen(
 ) {
   val uiState by modelManagerViewModel.uiState.collectAsState()
   var showSettingsDialog by remember { mutableStateOf(false) }
-  var showTosDialog by remember { mutableStateOf(!tosViewModel.getIsTosAccepted()) }
   val scope = rememberCoroutineScope()
   val context = LocalContext.current
   val isDevBuild = context.packageName.endsWith(".dev")
@@ -210,8 +206,7 @@ fun HomeScreen(
         .map { categoryMap[it]!! }
     }
 
-  // Show home screen content when TOS has been accepted.
-  if (!showTosDialog) {
+  // Show home screen content.
     // The code below manages the display of the model allowlist loading indicator with a debounced
     // delay. It ensures that a progress indicator is only shown if the loading operation
     // (represented by `uiState.loadingModelAllowlist`) takes longer than 200 milliseconds.
@@ -502,18 +497,6 @@ fun HomeScreen(
         }
       }
     }
-  }
-
-  // Show TOS dialog for users to accept.
-  if (showTosDialog) {
-    AppTosDialog(
-      onTosAccepted = {
-        showTosDialog = false
-        tosViewModel.acceptTos()
-      }
-    )
-  }
-
   // Settings dialog.
   if (showSettingsDialog) {
     SettingsDialog(
