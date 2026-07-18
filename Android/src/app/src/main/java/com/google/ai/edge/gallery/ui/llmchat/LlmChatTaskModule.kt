@@ -126,6 +126,16 @@ class LlmChatTask @Inject constructor() : CustomTask {
       viewModel.loadSystemPrompt(task)
       viewModel.initTts(context)
     }
+
+    // Register the SemanticFileMatcher classifier once the model warms up.
+    // DEMO SCOPE — see /docs/DECISIONS.md "File Fetch — semantic fallback candidate scope".
+    val modelManagerUiState by myData.modelManagerViewModel.uiState.collectAsState()
+    val selectedModel = modelManagerUiState.selectedModel
+    LaunchedEffect(selectedModel.instance) {
+      if (selectedModel.instance != null) {
+        viewModel.registerSemanticClassifier(selectedModel)
+      }
+    }
     
     val uiSystemPrompt by viewModel.uiSystemPrompt.collectAsState()
     val systemPromptUpdatedMessage = stringResource(R.string.system_prompt_updated)

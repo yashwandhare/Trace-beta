@@ -265,20 +265,24 @@ fun MessageInputText(
     val allGranted = permissions.entries.all { it.value }
     val query = pendingFileFetchQuery
     if (allGranted && query != null) {
-      val handler = com.google.ai.edge.gallery.filefetch.DefaultIntentFileFetchHandler(context)
-      val result = handler.handleFindFile(query)
-      if (result != null) {
-        val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-          setDataAndType(result.uri, context.contentResolver.getType(result.uri) ?: "*/*")
-          addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+      scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        val handler = com.google.ai.edge.gallery.filefetch.DefaultIntentFileFetchHandler(context)
+        val result = handler.handleFindFile(query)
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+          if (result != null) {
+            val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+              setDataAndType(result.uri, context.contentResolver.getType(result.uri) ?: "*/*")
+              addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            try {
+              context.startActivity(viewIntent)
+            } catch (_: Exception) {
+              android.widget.Toast.makeText(context, "No app found to open this file", android.widget.Toast.LENGTH_SHORT).show()
+            }
+          } else {
+            android.widget.Toast.makeText(context, "Could not find: $query", android.widget.Toast.LENGTH_SHORT).show()
+          }
         }
-        try {
-          context.startActivity(viewIntent)
-        } catch (_: Exception) {
-          android.widget.Toast.makeText(context, "No app found to open this file", android.widget.Toast.LENGTH_SHORT).show()
-        }
-      } else {
-        android.widget.Toast.makeText(context, "Could not find file: $query", android.widget.Toast.LENGTH_SHORT).show()
       }
     }
     pendingFileFetchQuery = null
@@ -291,20 +295,26 @@ fun MessageInputText(
       androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED
     }
     if (hasPermission) {
-      val handler = com.google.ai.edge.gallery.filefetch.DefaultIntentFileFetchHandler(context)
-      val result = handler.handleFindFile(query)
-      if (result != null) {
-        val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-          setDataAndType(result.uri, context.contentResolver.getType(result.uri) ?: "*/*")
-          addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+      // Run on IO — semantic fallback (Pass 2) can take up to ~20s; must not block Main.
+      android.widget.Toast.makeText(context, "Searching your files\u2026", android.widget.Toast.LENGTH_SHORT).show()
+      scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        val handler = com.google.ai.edge.gallery.filefetch.DefaultIntentFileFetchHandler(context)
+        val result = handler.handleFindFile(query)
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+          if (result != null) {
+            val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+              setDataAndType(result.uri, context.contentResolver.getType(result.uri) ?: "*/*")
+              addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            try {
+              context.startActivity(viewIntent)
+            } catch (_: Exception) {
+              android.widget.Toast.makeText(context, "No app found to open this file", android.widget.Toast.LENGTH_SHORT).show()
+            }
+          } else {
+            android.widget.Toast.makeText(context, "Could not find: $query", android.widget.Toast.LENGTH_SHORT).show()
+          }
         }
-        try {
-          context.startActivity(viewIntent)
-        } catch (_: Exception) {
-          android.widget.Toast.makeText(context, "No app found to open this file", android.widget.Toast.LENGTH_SHORT).show()
-        }
-      } else {
-        android.widget.Toast.makeText(context, "Could not find file: $query", android.widget.Toast.LENGTH_SHORT).show()
       }
     } else {
       pendingFileFetchQuery = query

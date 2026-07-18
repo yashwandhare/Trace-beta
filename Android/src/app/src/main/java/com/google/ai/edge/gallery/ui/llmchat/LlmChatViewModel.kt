@@ -45,6 +45,7 @@ import com.google.ai.edge.litertlm.Message
 import com.google.ai.edge.litertlm.ToolProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -73,6 +74,8 @@ open class LlmChatViewModelBase(
   override fun onCleared() {
       super.onCleared()
       ttsManager?.shutdown()
+      // Clear the SemanticFileMatcher classifier so it doesn't hold a stale model reference.
+      com.google.ai.edge.gallery.filefetch.SemanticFileMatcher.clearClassifier()
   }
 
   /**
@@ -130,6 +133,38 @@ open class LlmChatViewModelBase(
         onDone = { addMessage(model, ChatMessageInfo(content = systemPromptUpdatedMessage)) },
       )
     }
+  }
+
+  /**
+   * Registers the SemanticFileMatcher classifier using this ViewModel's already-warm model.
+   * Call this once the model instance is ready (e.g., after initialization completes).
+   *
+   * DEMO SCOPE — see /docs/DECISIONS.md "File Fetch — semantic fallback candidate scope".
+   * This wiring will be removed when Phase 3 (Qdrant Edge) replaces the fallback entirely.
+   */
+  fun registerSemanticClassifier(model: Model) {
+      com.google.ai.edge.gallery.filefetch.SemanticFileMatcher.setClassifier { bitmap, prompt ->
+          val result = CompletableDeferred<String>()
+          // Run a single silent inference on the already-initialized model.
+          // We do NOT add messages to the chat history for this call.
+          model.runtimeHelper.runInference(
+              model = model,
+              input = prompt,
+              images = listOf(bitmap),
+              resultListener = { partialResult, done, _ ->
+                  if (done) result.complete(partialResult)
+              },
+              cleanUpListener = {
+                  if (!result.isCompleted) result.complete("")
+              },
+              onError = { msg ->
+                  android.util.Log.e("SemanticMatcher", "Classifier inference error: $msg")
+                  if (!result.isCompleted) result.complete("")
+              },
+              coroutineScope = viewModelScope,
+          )
+          result.await()
+      }
   }
 
   fun generateResponse(

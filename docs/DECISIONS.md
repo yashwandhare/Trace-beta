@@ -100,3 +100,28 @@ scope — finding and understanding your own content — rather than reading as 
 Consistent with the broader pattern applied across every rejected/scoped-down feature in this log:
 anything with real-world consequence if wrong (financial data, identity data, submitted forms) must have
 a human-confirmation step. No exceptions, no "smart enough to skip it" carve-out.
+
+### File Fetch — semantic fallback candidate scope: "last 10 photos + Downloads folder" is demo-only (2026-07-18)
+When a direct filename match returns zero results, the app falls back to scanning a small candidate
+set and classifying each image via Gemma vision ("Is this a [description]? Yes or no").
+
+**What the scope is:**
+- Last 10 images from `MediaStore.Images.Media.EXTERNAL_CONTENT_URI` ordered by `DATE_ADDED DESC`
+- All files in the `Downloads` folder (typically < 30 items)
+- Combined upper bound: ~40 candidates → ~20s worst-case classification time, acceptable for demo
+
+**Why this scope was chosen:** speed + demo realism. A user demonstrating the driver's license feature
+will have taken the photo recently or saved it to Downloads. This assumption holds for live demos and
+short-horizon testing but does not hold for real users with large, unorganized galleries.
+
+**What this is NOT:** a production-grade semantic search. It is a deliberately small, time-boxed shortcut
+to make the hackathon demo work without building a full indexing pipeline first.
+
+**What replaces it in Phase 3:** the Qdrant Edge RAG pipeline. The classification cache built here
+(`SemanticFileCache` — query → matched FileResult, persisted in-memory per session) is intentionally
+structured as a stepping stone. It proves the Gemma vision classification loop works end-to-end, gives
+real data on match accuracy before the indexing work starts, and will be replaced (not extended) by
+the vector-store index once Phase 3 is complete. Do not add new capability to the cache layer — keep
+it minimal so Phase 3 doesn't have to unpick it later.
+
+**Decision owner:** confirmed with user (2026-07-18) before implementation.
