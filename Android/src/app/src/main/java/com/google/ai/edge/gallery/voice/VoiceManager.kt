@@ -33,7 +33,7 @@ class VoiceManager {
         .coerceAtLeast(4096) // guard against -1 / 0 error codes
 
     // Reuse the same AudioRecord across sessions to avoid per-press setup cost.
-    @SuppressLint("MissingPermission")
+    @get:SuppressLint("MissingPermission")
     private val audioRecord: AudioRecord by lazy {
         AudioRecord(
             MediaRecorder.AudioSource.MIC,

@@ -357,7 +357,6 @@ fun MessageInputText(
               ChatMessageText(
                   content = prompt,
                   side = ChatSide.USER,
-                  data = if (result.speakResponse) com.google.ai.edge.gallery.voice.VoiceInputMarker else null,
               )
           )
           result.bitmap?.let { bitmap ->
@@ -367,7 +366,11 @@ fun MessageInputText(
                   side = ChatSide.USER,
               )
           }
-          onSendMessage(messages)
+          if (result.speakResponse) {
+              onSendVoiceMessage(messages)
+          } else {
+              onSendMessage(messages)
+          }
       }
   }
 
