@@ -22,6 +22,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -48,69 +49,16 @@ fun ModelDownloadStatusInfoPanel(
   task: Task,
   modelManagerViewModel: ModelManagerViewModel,
 ) {
-  val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
-
-  // Manages the conditional display of UI elements (download model button and downloading
-  // animation) based on the corresponding download status.
-  //
-  // It uses delayed visibility ensuring they are shown only after a short delay if their
-  // respective conditions remain true. This prevents UI flickering and provides a smoother
-  // user experience.
-  val curStatus = modelManagerUiState.modelDownloadStatus[model.name]
-  val downloading =
-    curStatus?.status == ModelDownloadStatusType.IN_PROGRESS ||
-      curStatus?.status == ModelDownloadStatusType.PARTIALLY_DOWNLOADED ||
-      curStatus?.status == ModelDownloadStatusType.UNZIPPING
-
-  Column(
-    modifier = Modifier.fillMaxSize(),
-    horizontalAlignment = Alignment.CenterHorizontally,
-    verticalArrangement = Arrangement.Center,
-  ) {
-    // Animation.
-    Column(verticalArrangement = Arrangement.Bottom, modifier = Modifier.weight(1f)) {
-      AnimatedVisibility(
-        visible = downloading,
-        enter = scaleIn(initialScale = 0.9f) + fadeIn(),
-        exit = scaleOut(targetScale = 0.9f) + fadeOut(),
-      ) {
-        ModelDownloadingAnimation(
-          model = model,
-          task = task,
-          modelManagerViewModel = modelManagerViewModel,
-        )
-      }
-    }
-
-    // Download button and progress.
-    DownloadAndTryButton(
-      task = task,
+  Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    com.google.ai.edge.gallery.ui.common.modelitem.ModelItem(
       model = model,
-      enabled = true,
-      downloadStatus = curStatus?.status,
-      downloadProgress = calculateDownloadProgress(downloadStatus = curStatus),
+      task = task,
       modelManagerViewModel = modelManagerViewModel,
-      modifier = Modifier.padding(horizontal = 32.dp).padding(top = 4.dp, bottom = 16.dp),
-      onClicked = {},
-      canShowTryIt = false,
+      onModelClicked = {},
+      onBenchmarkClicked = {},
+      modifier = Modifier.padding(16.dp).fillMaxWidth(),
+      canExpand = false,
+      expanded = true
     )
-
-    // Info text.
-    Column(verticalArrangement = Arrangement.Top, modifier = Modifier.weight(1f)) {
-      AnimatedVisibility(
-        visible = downloading,
-        enter = scaleIn(initialScale = 0.9f) + fadeIn(),
-        exit = scaleOut(targetScale = 0.9f) + fadeOut(),
-      ) {
-        Text(
-          "Feel free to switch apps or lock your device.\n" +
-            "The download will continue in the background.\n" +
-            "We'll send a notification when it's done.",
-          style = MaterialTheme.typography.bodyLarge,
-          textAlign = TextAlign.Center,
-          modifier = Modifier.fillMaxWidth(),
-        )
-      }
-    }
   }
 }

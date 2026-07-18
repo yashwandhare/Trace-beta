@@ -258,7 +258,7 @@ fun DownloadAndTryButton(
       if (needToDownloadFirst) {
         downloadStarted = true
         // For HuggingFace urls
-        if (model.url.startsWith("https://huggingface.co")) {
+        if (false) {
           checkingToken = true
 
           // Check if the url needs auth.
