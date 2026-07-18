@@ -134,8 +134,17 @@ class ScreenCaptureService : Service() {
 
         imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
         
+        var lastCaptureTime = 0L
+        
         imageReader?.setOnImageAvailableListener({ reader ->
             val image = reader.acquireLatestImage() ?: return@setOnImageAvailableListener
+            
+            val now = System.currentTimeMillis()
+            if ((now - lastCaptureTime) < 500) {
+                image.close()
+                return@setOnImageAvailableListener
+            }
+            lastCaptureTime = now
             
             try {
                 val planes = image.planes

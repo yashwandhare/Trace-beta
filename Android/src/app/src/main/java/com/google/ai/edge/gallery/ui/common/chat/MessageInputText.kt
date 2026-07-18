@@ -257,6 +257,65 @@ fun MessageInputText(
 
   LaunchedEffect(pickedAudioClips) { onPickedAudioClipsChanged(pickedAudioClips) }
   
+  var pendingFileFetchQuery by remember { mutableStateOf<String?>(null) }
+  
+  val storagePermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+    androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+  ) { permissions ->
+    val allGranted = permissions.entries.all { it.value }
+    val query = pendingFileFetchQuery
+    if (allGranted && query != null) {
+      val handler = com.google.ai.edge.gallery.filefetch.DefaultIntentFileFetchHandler(context)
+      val result = handler.handleFindFile(query)
+      if (result != null) {
+        val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+          setDataAndType(result.uri, context.contentResolver.getType(result.uri) ?: "*/*")
+          addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        try {
+          context.startActivity(viewIntent)
+        } catch (_: Exception) {
+          android.widget.Toast.makeText(context, "No app found to open this file", android.widget.Toast.LENGTH_SHORT).show()
+        }
+      } else {
+        android.widget.Toast.makeText(context, "Could not find file: $query", android.widget.Toast.LENGTH_SHORT).show()
+      }
+    }
+    pendingFileFetchQuery = null
+  }
+
+  val performFileFetch: (String) -> Unit = { query ->
+    val hasPermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+      androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_MEDIA_IMAGES) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    } else {
+      androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    }
+    if (hasPermission) {
+      val handler = com.google.ai.edge.gallery.filefetch.DefaultIntentFileFetchHandler(context)
+      val result = handler.handleFindFile(query)
+      if (result != null) {
+        val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+          setDataAndType(result.uri, context.contentResolver.getType(result.uri) ?: "*/*")
+          addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        try {
+          context.startActivity(viewIntent)
+        } catch (_: Exception) {
+          android.widget.Toast.makeText(context, "No app found to open this file", android.widget.Toast.LENGTH_SHORT).show()
+        }
+      } else {
+        android.widget.Toast.makeText(context, "Could not find file: $query", android.widget.Toast.LENGTH_SHORT).show()
+      }
+    } else {
+      pendingFileFetchQuery = query
+      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+        storagePermissionLauncher.launch(arrayOf(android.Manifest.permission.READ_MEDIA_IMAGES, android.Manifest.permission.READ_MEDIA_VIDEO, android.Manifest.permission.READ_MEDIA_AUDIO))
+      } else {
+        storagePermissionLauncher.launch(arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE))
+      }
+    }
+  }
+
   val mediaProjectionLauncher = rememberLauncherForActivityResult(
     androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
   ) { result ->
@@ -826,21 +885,7 @@ fun MessageInputText(
                                       mediaProjectionLauncher.launch(projectionManager.createScreenCaptureIntent())
                                   }
                                 } else if (intentResult.type == com.google.ai.edge.gallery.voice.IntentType.FILE_FETCH) {
-                                  val handler = com.google.ai.edge.gallery.filefetch.DefaultIntentFileFetchHandler(context)
-                                  val result = handler.handleFindFile(intentResult.extractedFileName ?: "")
-                                  if (result != null) {
-                                      val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                                          setDataAndType(result.uri, context.contentResolver.getType(result.uri) ?: "*/*")
-                                          addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                      }
-                                      try {
-                                          context.startActivity(viewIntent)
-                                      } catch (e: Exception) {
-                                          android.widget.Toast.makeText(context, "No app found to open this file", android.widget.Toast.LENGTH_SHORT).show()
-                                      }
-                                  } else {
-                                      android.widget.Toast.makeText(context, "Could not find file: ${intentResult.extractedFileName}", android.widget.Toast.LENGTH_SHORT).show()
-                                  }
+                                  performFileFetch(intentResult.extractedFileName ?: "")
                                 }
                                 pickedImages = listOf()
                                 pickedAudioClips = listOf()
@@ -872,21 +917,7 @@ fun MessageInputText(
                         val intentResult = com.google.ai.edge.gallery.voice.IntentRouter(context).routeIntent(message)
                         when (intentResult.type) {
                           com.google.ai.edge.gallery.voice.IntentType.FILE_FETCH -> {
-                            val result = com.google.ai.edge.gallery.filefetch.DefaultIntentFileFetchHandler(context)
-                              .handleFindFile(intentResult.extractedFileName.orEmpty())
-                            if (result != null) {
-                              val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                                setDataAndType(result.uri, context.contentResolver.getType(result.uri) ?: "*/*")
-                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                              }
-                              try {
-                                context.startActivity(viewIntent)
-                              } catch (_: Exception) {
-                                android.widget.Toast.makeText(context, "No app found to open this file", android.widget.Toast.LENGTH_SHORT).show()
-                              }
-                            } else {
-                              android.widget.Toast.makeText(context, "Could not find file: ${intentResult.extractedFileName}", android.widget.Toast.LENGTH_SHORT).show()
-                            }
+                            performFileFetch(intentResult.extractedFileName.orEmpty())
                           }
                           com.google.ai.edge.gallery.voice.IntentType.SCREEN_EXPLAIN -> {
                             com.google.ai.edge.gallery.ocr.ScreenExplainManager.requestCapture(
