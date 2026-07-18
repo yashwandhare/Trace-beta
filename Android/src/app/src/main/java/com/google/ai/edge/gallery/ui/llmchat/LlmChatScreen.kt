@@ -46,6 +46,7 @@ import com.google.ai.edge.gallery.firebaseAnalytics
 import com.google.ai.edge.gallery.ui.common.chat.ChatMessage
 import com.google.ai.edge.gallery.ui.common.chat.ChatMessageAudioClip
 import com.google.ai.edge.gallery.ui.common.chat.ChatMessageImage
+import com.google.ai.edge.gallery.ui.common.chat.ChatMessageFile
 import com.google.ai.edge.gallery.ui.common.chat.ChatMessageText
 import com.google.ai.edge.gallery.ui.common.chat.ChatSide
 import com.google.ai.edge.gallery.ui.common.chat.ChatView
@@ -247,6 +248,7 @@ fun ChatViewWrapper(
       var text = ""
       val images: MutableList<Bitmap> = mutableListOf()
       val audioMessages: MutableList<ChatMessageAudioClip> = mutableListOf()
+      val files: MutableList<ChatMessageFile> = mutableListOf()
       var chatMessageText: ChatMessageText? = null
       for (message in messages) {
         if (message is ChatMessageText) {
@@ -256,9 +258,11 @@ fun ChatViewWrapper(
           images.addAll(message.bitmaps)
         } else if (message is ChatMessageAudioClip) {
           audioMessages.add(message)
+        } else if (message is ChatMessageFile) {
+          files.add(message)
         }
       }
-      if ((text.isNotEmpty() && chatMessageText != null) || audioMessages.isNotEmpty()) {
+      if ((text.isNotEmpty() && chatMessageText != null) || audioMessages.isNotEmpty() || files.isNotEmpty()) {
         if (text.isNotEmpty()) {
           modelManagerViewModel.addTextInputHistory(text)
         }
@@ -267,6 +271,7 @@ fun ChatViewWrapper(
           input = text,
           images = images,
           audioMessages = audioMessages,
+          files = files,
           onFirstToken = onFirstToken,
           onDone = { onGenerateResponseDone(model) },
           onError = { errorMessage ->
@@ -297,6 +302,8 @@ fun ChatViewWrapper(
             putInt("image_count", images.size)
             putBoolean("has_audio", audioMessages.isNotEmpty())
             putInt("audio_count", audioMessages.size)
+            putBoolean("has_document", files.isNotEmpty())
+            putInt("document_count", files.size)
             putInt("active_skills_count", activeSkills.size)
             putString("active_skills_list", activeSkills.joinToString(","))
             putInt("active_mcp_servers_count", mcpCount)
@@ -363,14 +370,19 @@ fun ChatViewWrapper(
         viewModel.addMessage(model = model, message = message)
       }
       var text = ""
+      val files: MutableList<ChatMessageFile> = mutableListOf()
       for (message in messages) {
         if (message is ChatMessageText) text = message.content
+        else if (message is ChatMessageFile) files.add(message)
       }
-      if (text.isNotEmpty()) {
-        modelManagerViewModel.addTextInputHistory(text)
+      if (text.isNotEmpty() || files.isNotEmpty()) {
+        if (text.isNotEmpty()) {
+          modelManagerViewModel.addTextInputHistory(text)
+        }
         viewModel.generateResponse(
           model = model,
           input = text,
+          files = files,
           onFirstToken = onFirstToken,
           onDone = { onGenerateResponseDone(model) },
           onError = { errorMessage ->

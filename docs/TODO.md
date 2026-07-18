@@ -73,7 +73,7 @@ no screen capture, no RAG yet.)
 - [x] Route captured audio to Gemma's native audio path (used text via Android SpeechRecognition)
 - [x] Wire TTS output
 - [x] Build minimal rule-based intent router
-- [ ] Extend AI Chat logic to handle explicit file and image attachments as RAG/processing inputs
+- [x] Extend AI Chat logic to handle explicit file and image attachments as RAG/processing inputs
 
 ### Dev B
 - [x] Build push-to-talk button UI (idle/listening/processing states)
@@ -92,7 +92,7 @@ no screen capture, no RAG yet.)
 ### Dev A
 - [x] MediaProjection permission flow
 - [x] Screen capture → Gemma vision + voice question → response (Continuous Gemini Live mode implemented)
-- [ ] Wire device camera capture logic for the new Vision module (scan-and-chat)
+- [x] Wire device camera capture logic for the new Vision module (scan-and-chat)
 
 ### Dev B
 - [ ] Build the new Vision module homescreen entry and camera capture UI

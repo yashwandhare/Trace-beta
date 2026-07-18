@@ -33,6 +33,7 @@ import com.google.ai.edge.gallery.ui.common.chat.ChatMessageError
 import com.google.ai.edge.gallery.ui.common.chat.ChatMessageInfo
 import com.google.ai.edge.gallery.ui.common.chat.ChatMessageLoading
 import com.google.ai.edge.gallery.ui.common.chat.ChatMessageText
+import com.google.ai.edge.gallery.ui.common.chat.ChatMessageFile
 import com.google.ai.edge.gallery.ui.common.chat.ChatMessageThinking
 import com.google.ai.edge.gallery.ui.common.chat.ChatMessageType
 import com.google.ai.edge.gallery.ui.common.chat.ChatMessageWarning
@@ -176,6 +177,7 @@ open class LlmChatViewModelBase(
     input: String,
     images: List<Bitmap> = listOf(),
     audioMessages: List<ChatMessageAudioClip> = listOf(),
+    files: List<ChatMessageFile> = listOf(),
     onFirstToken: (Model) -> Unit = {},
     onDone: () -> Unit = {},
     onError: (String) -> Unit,
