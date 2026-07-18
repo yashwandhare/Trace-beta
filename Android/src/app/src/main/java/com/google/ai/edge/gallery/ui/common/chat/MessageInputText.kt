@@ -786,39 +786,49 @@ fun MessageInputText(
                 // Send button.
                 else {
                   Row(verticalAlignment = Alignment.CenterVertically) {
-                    PttOverlay(
-                      externalPttState = if (voiceUiState.recognizing) com.google.ai.edge.gallery.ui.voiceinput.PttState.LISTENING else com.google.ai.edge.gallery.ui.voiceinput.PttState.IDLE,
-                      onStartRecording = {
-                        voiceViewModel.startSpeechRecognition(
-                          onDone = { text ->
-                            if (text.isNotBlank()) {
-                              val intentRouter = com.google.ai.edge.gallery.voice.IntentRouter(context)
-                              val intentResult = intentRouter.routeIntent(text)
-                              
-                              if (intentResult.type == com.google.ai.edge.gallery.voice.IntentType.LLM_CHAT) {
-                                onSendMessage(
-                                  createMessagesToSend(
-                                    pickedImages = pickedImages,
-                                    audioClips = pickedAudioClips,
-                                    text = text.trim(),
+                    IconButton(
+                      onClick = {
+                        if (voiceUiState.recognizing) {
+                          voiceViewModel.stopSpeechRecognition()
+                        } else {
+                          voiceViewModel.startSpeechRecognition(
+                            onDone = { text ->
+                              if (text.isNotBlank()) {
+                                val intentRouter = com.google.ai.edge.gallery.voice.IntentRouter(context)
+                                val intentResult = intentRouter.routeIntent(text)
+                                
+                                if (intentResult.type == com.google.ai.edge.gallery.voice.IntentType.LLM_CHAT) {
+                                  onSendMessage(
+                                    createMessagesToSend(
+                                      pickedImages = pickedImages,
+                                      audioClips = pickedAudioClips,
+                                      text = text.trim(),
+                                    )
                                   )
-                                )
-                              } else if (intentResult.type == com.google.ai.edge.gallery.voice.IntentType.SCREEN_EXPLAIN) {
-                                val projectionManager = context.getSystemService(android.content.Context.MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
-                                mediaProjectionLauncher.launch(projectionManager.createScreenCaptureIntent())
+                                } else if (intentResult.type == com.google.ai.edge.gallery.voice.IntentType.SCREEN_EXPLAIN) {
+                                  val projectionManager = context.getSystemService(android.content.Context.MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
+                                  mediaProjectionLauncher.launch(projectionManager.createScreenCaptureIntent())
+                                }
+                                pickedImages = listOf()
+                                pickedAudioClips = listOf()
+                                onValueChanged("")
                               }
-                              pickedImages = listOf()
-                              pickedAudioClips = listOf()
-                              onValueChanged("")
-                            }
-                          },
-                          onAmplitudeChanged = {}
-                        )
+                            },
+                            onAmplitudeChanged = {}
+                          )
+                        }
                       },
-                      onStopRecording = {
-                        voiceViewModel.stopSpeechRecognition()
-                      }
-                    )
+                      colors =
+                        IconButtonDefaults.iconButtonColors(
+                          containerColor = if (voiceUiState.recognizing) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.error,
+                        ),
+                    ) {
+                      Icon(
+                        Icons.Rounded.Mic,
+                        contentDescription = "Mic",
+                        tint = if (voiceUiState.recognizing) MaterialTheme.colorScheme.onErrorContainer else Color.White,
+                      )
+                    }
                     IconButton(
                       enabled =
                         !inProgress &&

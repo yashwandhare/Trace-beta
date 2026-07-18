@@ -341,6 +341,7 @@ open class LlmChatViewModelBase(
       removeLastMessage(model = model)
     }
     setInProgress(false)
+    ttsManager?.stop()
     model.runtimeHelper.stopResponse(model)
     Log.d(TAG, "Done stopping response")
   }

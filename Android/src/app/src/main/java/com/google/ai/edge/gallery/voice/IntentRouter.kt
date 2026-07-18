@@ -16,13 +16,12 @@ class IntentRouter(private val context: android.content.Context) {
     fun routeIntent(inputText: String): IntentResult {
         val lowerText = inputText.lowercase().trim()
         
-        // Very minimal rule-based router
-        // If the user says "find file X", "fetch file X", "open file X"
-        if (lowerText.startsWith("find file ") || 
-            lowerText.startsWith("fetch file ") || 
-            lowerText.startsWith("open file ")) {
-            
-            val fileName = lowerText.substringAfter("file ").trim()
+        // More lenient rule-based router for File Fetch
+        val fileFetchRegex = Regex("(?i).*(?:find|fetch|open)\\s+(?:file|my|the)\\s+(.+)")
+        val matchResult = fileFetchRegex.find(lowerText)
+        
+        if (matchResult != null) {
+            val fileName = matchResult.groupValues[1].trim()
             val intentResult = IntentResult(
                 type = IntentType.FILE_FETCH,
                 query = inputText,
