@@ -32,3 +32,21 @@ Format:
   - `HomeScreen` still renders a task tile grid with all registered tasks. The "direct to chat" UX requires Dev A to either wire auto-navigation on single task or confirm whether HomeScreen is still wanted in Phase 0a.
   - `ModelPickerChip` references may remain in `ModelPageAppBar.kt` or `LlmChatScreen.kt` — Dev A should audit before combined build.
 - Benchmark numbers: N/A (UI-only changes).
+
+---
+
+## 2026-07-18 — Dev A — Phase 0 (Foundation Completion)
+- Did: 
+  - Restored the benchmark UI and wired it to the "Models" drawer menu item.
+  - Added a loading spinner overlay for when the model is initializing (loading into RAM/VRAM).
+  - Switched the default accelerator to GPU in the model allowlist.
+  - Exposed the thinking toggle capability in the model settings, disabled by default.
+  - Finalized the default system prompt for "Trace", an advanced on-device AI assistant.
+  - Cleaned up Dev B's unused module references and finalized the simplified welcome screen layout.
+- Broken/open: None. Phase 0 is fully complete and pushed to main. Ready for Phase 1.
+- Benchmark numbers (Gemma-4-E2B-it | GPU | 256 prefill / 256 decode | 3 runs): 
+  - Prefill speed: 78.05 tokens/sec
+  - Decode speed: 8.79 tokens/sec
+  - Time to first token: 3.39 sec
+  - Cold load (First init time): 19495.95 ms (~19.5s)
+  - Warm load (Steady init time): 14038.13 ms (~14.0s)
