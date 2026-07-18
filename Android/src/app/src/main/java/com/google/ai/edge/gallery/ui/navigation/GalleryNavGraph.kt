@@ -265,12 +265,13 @@ fun GalleryNavHost(
                   for (curModel in customTask.task.models) {
                     val instanceToCleanUp = curModel.instance
                     scope.launch(Dispatchers.Default) {
-                      modelManagerViewModel.cleanupModel(
-                        context = context,
-                        task = customTask.task,
-                        model = curModel,
-                        instanceToCleanUp = instanceToCleanUp,
-                      )
+                      // Keep model loaded per user request
+                      // modelManagerViewModel.cleanupModel(
+                      //   context = context,
+                      //   task = customTask.task,
+                      //   model = curModel,
+                      //   instanceToCleanUp = instanceToCleanUp,
+                      // )
                     }
                   }
                 }
@@ -440,12 +441,13 @@ private fun CustomTaskScreen(
             scope.launch(Dispatchers.Default) {
               // Clean up prev model.
               if (prevModel.name != newSelectedModel.name) {
-                modelManagerViewModel.cleanupModel(
-                  context = context,
-                  task = task,
-                  model = prevModel,
-                  instanceToCleanUp = instanceToCleanUp,
-                )
+                // Keep model loaded per user request
+                // modelManagerViewModel.cleanupModel(
+                //   context = context,
+                //   task = task,
+                //   model = prevModel,
+                //   instanceToCleanUp = instanceToCleanUp,
+                // )
               }
 
               // Update selected model.

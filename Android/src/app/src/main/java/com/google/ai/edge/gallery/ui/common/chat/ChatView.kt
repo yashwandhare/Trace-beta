@@ -185,9 +185,10 @@ fun ChatView(
 
     // clean up all models.
     scope.launch(Dispatchers.Default) {
-      for (model in task.models) {
-        modelManagerViewModel.cleanupModel(context = context, task = task, model = model)
-      }
+      // For performance reasons based on user request, the model is kept loaded.
+      // for (model in task.models) {
+      //   modelManagerViewModel.cleanupModel(context = context, task = task, model = model)
+      // }
     }
   }
 
@@ -330,11 +331,12 @@ fun ChatView(
               onBackClicked = { handleNavigateUp() },
               onModelSelected = { prevModel, curModel ->
                 if (prevModel.name != curModel.name) {
-                  modelManagerViewModel.cleanupModel(
-                    context = context,
-                    task = task,
-                    model = prevModel,
-                  )
+                  // Keep model loaded per user request
+                  // modelManagerViewModel.cleanupModel(
+                  //   context = context,
+                  //   task = task,
+                  //   model = prevModel,
+                  // )
                 }
                 modelManagerViewModel.selectModel(model = curModel)
               },
@@ -408,16 +410,13 @@ fun ChatView(
                         showImagePicker = showImagePicker,
                         showAudioPicker = showAudioPicker,
                         emptyStateComposable = emptyStateComposable,
+                        voiceButton = { composableBelowMessageList(selectedModel) },
                       )
                       val initializationStatus = modelManagerUiState.modelInitializationStatus[selectedModel.name]
                       val initializing = initializationStatus?.status == ModelInitializationStatusType.INITIALIZING
                       if (initializing) {
-                        androidx.compose.material3.CircularProgressIndicator(
-                          modifier = Modifier.align(Alignment.Center)
-                        )
+                        // Spinner removed as requested
                       }
-                      
-                      composableBelowMessageList(selectedModel)
                     }
                   // Model download
                   false ->

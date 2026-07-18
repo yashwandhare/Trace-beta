@@ -179,6 +179,7 @@ fun MessageInputText(
   showMcpPicker: Boolean = false,
   showImagePicker: Boolean = false,
   showAudioPicker: Boolean = false,
+  voiceButton: @Composable () -> Unit = {},
   showStopButtonWhenInProgress: Boolean = false,
   onImageLimitExceeded: () -> Unit = {},
   onModelNotSupportImage: () -> Unit = {},
@@ -733,35 +734,38 @@ fun MessageInputText(
                 }
                 // Send button.
                 else {
-                  IconButton(
-                    enabled =
-                      !inProgress &&
-                        !isResettingSession &&
-                        (curMessage.isNotEmpty() || pickedAudioClips.isNotEmpty()),
-                    onClick = {
-                      var message = curMessage.trim()
-                      onSendMessage(
-                        createMessagesToSend(
-                          pickedImages = pickedImages,
-                          audioClips = pickedAudioClips,
-                          text = message,
+                  Row(verticalAlignment = Alignment.CenterVertically) {
+                    voiceButton()
+                    IconButton(
+                      enabled =
+                        !inProgress &&
+                          !isResettingSession &&
+                          (curMessage.isNotEmpty() || pickedAudioClips.isNotEmpty()),
+                      onClick = {
+                        var message = curMessage.trim()
+                        onSendMessage(
+                          createMessagesToSend(
+                            pickedImages = pickedImages,
+                            audioClips = pickedAudioClips,
+                            text = message,
+                          )
                         )
+                        pickedImages = listOf()
+                        pickedAudioClips = listOf()
+                      },
+                      colors =
+                        IconButtonDefaults.iconButtonColors(
+                          containerColor = getTaskIconColor(task = task),
+                          disabledContainerColor = getTaskIconColor(task = task).copy(alpha = 0.3f),
+                        ),
+                    ) {
+                      Icon(
+                        Icons.AutoMirrored.Rounded.Send,
+                        contentDescription = stringResource(R.string.cd_send_prompt_icon),
+                        modifier = Modifier.offset(x = 2.dp),
+                        tint = Color.White,
                       )
-                      pickedImages = listOf()
-                      pickedAudioClips = listOf()
-                    },
-                    colors =
-                      IconButtonDefaults.iconButtonColors(
-                        containerColor = getTaskIconColor(task = task),
-                        disabledContainerColor = getTaskIconColor(task = task).copy(alpha = 0.3f),
-                      ),
-                  ) {
-                    Icon(
-                      Icons.AutoMirrored.Rounded.Send,
-                      contentDescription = stringResource(R.string.cd_send_prompt_icon),
-                      modifier = Modifier.offset(x = 2.dp),
-                      tint = Color.White,
-                    )
+                    }
                   }
                 }
               }

@@ -20,6 +20,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -101,8 +102,7 @@ enum class PttState {
 @Composable
 fun PushToTalkButton(
   state: PttState,
-  onPressStart: () -> Unit,
-  onPressEnd: () -> Unit,
+  onClick: () -> Unit,
   modifier: Modifier = Modifier,
   enabled: Boolean = true,
   size: Dp = 72.dp,
@@ -152,16 +152,7 @@ fun PushToTalkButton(
             }
             .then(
               if (enabled && state != PttState.PROCESSING) {
-                Modifier.pointerInput(Unit) {
-                  detectTapGestures(
-                    onPress = {
-                      onPressStart()
-                      // Suspend until the finger is lifted or cancelled.
-                      tryAwaitRelease()
-                      onPressEnd()
-                    }
-                  )
-                }
+                Modifier.clickable { onClick() }
               } else {
                 Modifier
               }
