@@ -84,6 +84,12 @@ message Settings {
 
   repeated string viewed_promo_id = 10;
   bool disable_firebase_analytics = 11;
+
+  // Semantic search scope settings
+  bool search_scope_downloads_enabled = 12;
+  bool search_scope_screenshots_enabled = 13;
+  bool search_scope_documents_enabled = 14;
+  int32 search_scope_recent_images_count = 15;
 }
 
 message McpAuth {

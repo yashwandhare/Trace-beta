@@ -101,18 +101,15 @@ Consistent with the broader pattern applied across every rejected/scoped-down fe
 anything with real-world consequence if wrong (financial data, identity data, submitted forms) must have
 a human-confirmation step. No exceptions, no "smart enough to skip it" carve-out.
 
-### File Fetch — semantic fallback candidate scope: "last 10 photos + Downloads folder" is demo-only (2026-07-18)
-When a direct filename match returns zero results, the app falls back to scanning a small candidate
+### File Fetch — semantic fallback candidate scope: configurable (formerly "last 10 photos + Downloads folder" demo-only)
+When a direct filename match returns zero results, the app falls back to scanning a candidate
 set and classifying each image via Gemma vision ("Is this a [description]? Yes or no").
 
 **What the scope is:**
-- Last 10 images from `MediaStore.Images.Media.EXTERNAL_CONTENT_URI` ordered by `DATE_ADDED DESC`
-- All files in the `Downloads` folder (typically < 30 items)
-- Combined upper bound: ~40 candidates → ~20s worst-case classification time, acceptable for demo
+- User configurable in settings (Downloads, Screenshots, Documents, and recent MediaStore images count [10-50]).
+- Combined upper bound: configurable but typically < 100 candidates → ~0.5s classification time per image.
 
-**Why this scope was chosen:** speed + demo realism. A user demonstrating the driver's license feature
-will have taken the photo recently or saved it to Downloads. This assumption holds for live demos and
-short-horizon testing but does not hold for real users with large, unorganized galleries.
+**Why this scope was chosen:** speed + demo realism. Originally hardcoded, it is now exposed to users to allow them to balance search exhaustiveness against inference latency (e.g., ~15s worst-case for 30 candidates). This assumption holds for live demos and short-horizon testing but does not hold for real users with large, unorganized galleries.
 
 **What this is NOT:** a production-grade semantic search. It is a deliberately small, time-boxed shortcut
 to make the hackathon demo work without building a full indexing pipeline first.

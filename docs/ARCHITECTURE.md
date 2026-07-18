@@ -83,6 +83,9 @@ over indexed chunks, and Gemma generates the quiz/summary grounded in what's act
   see `/ROADMAP.md` Phase 3 for the validation gate and fallback plan.
 - Storage: local directory on disk (Edge Shard), disk-backed, offline-capable, no background service.
 
+### Semantic File Matcher (Demo Fallback)
+When exact file matches fail, a user-configurable semantic fallback runs (using Gemma vision to classify image candidates). Due to Android 13+ scoped storage limitations, fetching general files (e.g. PDFs) directly from shared storage without a user picker is heavily restricted. Thus, voice-fetch (and the semantic fallback) operates strictly on images from MediaStore and accessible user directories (e.g., Downloads, Screenshots). This scope is configurable in settings to balance thoroughness against the ~0.5s/image latency of the vision model.
+
 ### Why voice + visual UI, not voice-only
 Research on voice-only interfaces for low-literacy/general users consistently shows pure voice
 underperforms compared to voice paired with visual confirmation (illiterate-user studies show ~53%

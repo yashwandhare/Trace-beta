@@ -62,7 +62,9 @@ for the reasoning ("voice-only underperforms" finding).
 
 ### P1 — File Fetch
 Direct voice/text file lookup and retrieval — not semantic search, a direct filesystem query via Storage
-Access Framework / MediaStore.
+Access Framework / MediaStore. **Note:** Due to Android 13+ scoped storage limitations, fetching general files (e.g., PDFs in Downloads) via voice without a system picker is restricted. As a result, the voice-fetch fallback (Semantic File Matcher) is currently limited to images only. File-input via standard picker has no restriction.
+
+The Semantic File Matcher scope is user-configurable (Downloads, Screenshots, Documents, and recent images limit) to balance search exhaustiveness against inference latency.
 
 **Example:** "Hey Trace, pull up my driver's license."
 

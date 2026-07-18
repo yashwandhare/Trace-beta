@@ -130,6 +130,19 @@ interface DataStoreRepository {
 
   /** Returns whether a promo with the specified ID has been viewed. */
   fun hasViewedPromo(promoId: String): Boolean
+
+  // Semantic search scope settings
+  fun getSearchScopeDownloadsEnabled(): Boolean
+  fun setSearchScopeDownloadsEnabled(enabled: Boolean)
+
+  fun getSearchScopeScreenshotsEnabled(): Boolean
+  fun setSearchScopeScreenshotsEnabled(enabled: Boolean)
+
+  fun getSearchScopeDocumentsEnabled(): Boolean
+  fun setSearchScopeDocumentsEnabled(enabled: Boolean)
+
+  fun getSearchScopeRecentImagesCount(): Int
+  fun setSearchScopeRecentImagesCount(count: Int)
 }
 
 /** Repository for managing data using Proto DataStore. */
@@ -467,9 +480,64 @@ class DefaultDataStoreRepository(
   }
 
   override fun hasViewedPromo(promoId: String): Boolean {
+    return runBlocking { dataStore.data.first().viewedPromoIdList.contains(promoId) }
+  }
+
+  override fun getSearchScopeDownloadsEnabled(): Boolean {
     return runBlocking {
       val settings = dataStore.data.first()
-      settings.viewedPromoIdList.contains(promoId)
+      if (settings.searchScopeRecentImagesCount == 0) {
+        true
+      } else {
+        settings.searchScopeDownloadsEnabled
+      }
+    }
+  }
+
+  override fun setSearchScopeDownloadsEnabled(enabled: Boolean) {
+    runBlocking {
+      dataStore.updateData { settings ->
+        settings.toBuilder().setSearchScopeDownloadsEnabled(enabled).build()
+      }
+    }
+  }
+
+  override fun getSearchScopeScreenshotsEnabled(): Boolean {
+    return runBlocking { dataStore.data.first().searchScopeScreenshotsEnabled }
+  }
+
+  override fun setSearchScopeScreenshotsEnabled(enabled: Boolean) {
+    runBlocking {
+      dataStore.updateData { settings ->
+        settings.toBuilder().setSearchScopeScreenshotsEnabled(enabled).build()
+      }
+    }
+  }
+
+  override fun getSearchScopeDocumentsEnabled(): Boolean {
+    return runBlocking { dataStore.data.first().searchScopeDocumentsEnabled }
+  }
+
+  override fun setSearchScopeDocumentsEnabled(enabled: Boolean) {
+    runBlocking {
+      dataStore.updateData { settings ->
+        settings.toBuilder().setSearchScopeDocumentsEnabled(enabled).build()
+      }
+    }
+  }
+
+  override fun getSearchScopeRecentImagesCount(): Int {
+    return runBlocking {
+      val count = dataStore.data.first().searchScopeRecentImagesCount
+      if (count == 0) 10 else count
+    }
+  }
+
+  override fun setSearchScopeRecentImagesCount(count: Int) {
+    runBlocking {
+      dataStore.updateData { settings ->
+        settings.toBuilder().setSearchScopeRecentImagesCount(count).build()
+      }
     }
   }
 }
