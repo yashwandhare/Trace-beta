@@ -3,6 +3,10 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/google-ai-edge/gallery)](https://github.com/google-ai-edge/gallery/releases)
 
+> **Trace** is modified from [Google AI Edge Gallery](https://github.com/google-ai-edge/gallery),
+> licensed under the [Apache License, Version 2.0](LICENSE). The original copyright notices and
+> license text are retained in this repository per the terms of the Apache 2.0 License.
+
 **Explore, Experience, and Evaluate the Future of On-Device Generative AI with Google AI Edge.**
 
 AI Edge Gallery is the premier destination for running the world's most powerful open-source Large Language Models (LLMs) on your mobile device. Experience high-performance Generative AI directly on your hardware—fully offline, private, and lightning-fast.
