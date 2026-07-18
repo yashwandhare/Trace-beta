@@ -131,8 +131,10 @@ class LlmChatTask @Inject constructor() : CustomTask {
     val systemPromptUpdatedMessage = stringResource(R.string.system_prompt_updated)
 
     val coroutineScope = rememberCoroutineScope()
-    val voiceManager = remember { VoiceManager() }
+    val voiceViewModel: com.google.ai.edge.gallery.ui.common.textandvoiceinput.HoldToDictateViewModel = hiltViewModel()
     val intentRouter = remember { IntentRouter() }
+
+    val voiceUiState by voiceViewModel.uiState.collectAsState()
 
     LlmChatScreen(
       modelManagerViewModel = myData.modelManagerViewModel,
@@ -150,36 +152,7 @@ class LlmChatTask @Inject constructor() : CustomTask {
         )
       },
       composableBelowMessageList = { model ->
-        PttOverlay(
-          onStartRecording = {
-            voiceManager.startListening(coroutineScope)
-          },
-          onStopRecording = {
-            val audioBytes = voiceManager.stopListening()
-            // We just route audio natively to Gemma as requested: "Route captured audio to Gemma's native audio path"
-            // Wait, we also need to route via IntentRouter if it's text. 
-            // Since Gemma processes the audio, the IntentRouter needs the *output* text. 
-            // Or maybe IntentRouter routes audio? No, IntentRouter takes text.
-            // For now, we just pass audio to LLM:
-            val audioClip = ChatMessageAudioClip(
-              audioData = audioBytes,
-              sampleRate = 16000,
-              side = ChatSide.USER
-            )
-            viewModel.addMessage(model, audioClip)
-            viewModel.generateResponse(
-              model = model,
-              input = "",
-              audioMessages = listOf(audioClip),
-              onFirstToken = {},
-              onDone = { 
-                 // Done is handled in ViewModel (TTS)
-              },
-              onError = {},
-              allowThinking = task.allowCapability(com.google.ai.edge.gallery.data.ModelCapability.LLM_THINKING, model)
-            )
-          }
-        )
+        // PttOverlay is now built into MessageInputText
       },
       emptyStateComposable = {
         Box(modifier = Modifier.fillMaxSize()) {

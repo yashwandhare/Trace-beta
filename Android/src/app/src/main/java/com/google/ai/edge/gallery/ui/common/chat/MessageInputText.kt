@@ -140,6 +140,9 @@ import java.io.FileInputStream
 import java.util.concurrent.Executors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.google.ai.edge.gallery.ui.common.textandvoiceinput.HoldToDictateViewModel
+import com.google.ai.edge.gallery.ui.voiceinput.PttOverlay
 
 private const val TAG = "AGMessageInputText"
 
@@ -187,6 +190,15 @@ fun MessageInputText(
 ) {
   val context = LocalContext.current
   val lifecycleOwner = LocalLifecycleOwner.current
+
+  val voiceViewModel: HoldToDictateViewModel = hiltViewModel()
+  val voiceUiState by voiceViewModel.uiState.collectAsState()
+
+  LaunchedEffect(voiceUiState.recognizedText) {
+    if (voiceUiState.recognizing) {
+      onValueChanged(voiceUiState.recognizedText)
+    }
+  }
   val scope = rememberCoroutineScope()
   val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
   var showAddContentMenu by remember { mutableStateOf(false) }
@@ -735,7 +747,30 @@ fun MessageInputText(
                 // Send button.
                 else {
                   Row(verticalAlignment = Alignment.CenterVertically) {
-                    voiceButton()
+                    PttOverlay(
+                      onStartRecording = {
+                        voiceViewModel.startSpeechRecognition(
+                          onDone = { text ->
+                            if (text.isNotBlank()) {
+                              onSendMessage(
+                                createMessagesToSend(
+                                  pickedImages = pickedImages,
+                                  audioClips = pickedAudioClips,
+                                  text = text.trim(),
+                                )
+                              )
+                              pickedImages = listOf()
+                              pickedAudioClips = listOf()
+                              onValueChanged("")
+                            }
+                          },
+                          onAmplitudeChanged = {}
+                        )
+                      },
+                      onStopRecording = {
+                        voiceViewModel.stopSpeechRecognition()
+                      }
+                    )
                     IconButton(
                       enabled =
                         !inProgress &&
