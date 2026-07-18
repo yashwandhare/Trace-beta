@@ -87,6 +87,7 @@ import kotlinx.coroutines.launch
 private const val TAG = "AGGalleryNavGraph"
 private const val ROUTE_HOMESCREEN = "homepage"
 private const val ROUTE_MODEL = "route_model"
+const val ROUTE_BENCHMARK = "benchmark"
 private const val ENTER_ANIMATION_DURATION_MS = 500
 private val ENTER_ANIMATION_EASING = EaseOutExpo
 private const val ENTER_ANIMATION_DELAY_MS = 100
@@ -194,7 +195,9 @@ fun GalleryNavHost(
               Bundle().apply { putString("capability_name", task.id) },
             )
           },
-          onModelsClicked = { /* model manager removed */ },
+          onModelsClicked = { 
+            navController.navigate("$ROUTE_BENCHMARK/Gemma-4-E2B-it")
+          },
           onNotificationsClicked = { /* notifications removed */ },
           gm4 = true,
         )
@@ -241,6 +244,9 @@ fun GalleryNavHost(
                     navController.navigateUp()
                   },
                   initialQuery = queryParam,
+                  onBenchmarkScreenClicked = { clickedModel ->
+                    navController.navigate("$ROUTE_BENCHMARK/${clickedModel.name}")
+                  }
                 )
             )
           } else {
@@ -286,6 +292,23 @@ fun GalleryNavHost(
             }
           }
         }
+      }
+    }
+
+    // Benchmark screen.
+    composable(
+      route = "$ROUTE_BENCHMARK/{modelName}",
+      arguments = listOf(navArgument("modelName") { type = NavType.StringType }),
+      enterTransition = { slideEnter() },
+      exitTransition = { slideExit() },
+    ) { backStackEntry ->
+      val modelName = backStackEntry.arguments?.getString("modelName") ?: ""
+      modelManagerViewModel.getModelByName(name = modelName)?.let { model ->
+        com.google.ai.edge.gallery.ui.benchmark.BenchmarkScreen(
+          initialModel = model,
+          modelManagerViewModel = modelManagerViewModel,
+          onBackClicked = { navController.navigateUp() }
+        )
       }
     }
   }

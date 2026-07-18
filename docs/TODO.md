@@ -37,10 +37,10 @@ no screen capture, no RAG yet.)
       unrelated screens, Trace-branded, dark themed
 
 ### Merge checkpoint
-- [ ] Dev A merges `dev-b` → `main`
-- [ ] Dev A merges `dev-a` → `main`
-- [ ] Dev A builds and tests combined `main`
-- [ ] Gate met? → move to Phase 0.
+- [x] Dev A merges `dev-b` → `main`
+- [x] Dev A merges `dev-a` → `main`
+- [x] Dev A builds and tests combined `main`
+- [x] Gate met? → move to Phase 0.
 
 ---
 

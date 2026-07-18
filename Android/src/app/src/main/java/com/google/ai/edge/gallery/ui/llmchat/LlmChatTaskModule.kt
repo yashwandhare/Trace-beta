@@ -74,6 +74,7 @@ class LlmChatTask @Inject constructor() : CustomTask {
       sourceCodeUrl =
         "https://github.com/google-ai-edge/gallery/blob/main/Android/src/app/src/main/java/com/google/ai/edge/gallery/ui/llmchat/LlmChatModelHelper.kt",
       textInputPlaceHolderRes = R.string.text_input_placeholder_llm_chat,
+      defaultSystemPrompt = "You are Trace, an advanced, highly intelligent on-device AI assistant powered by Gemma 4. You are designed to be concise, helpful, and exceptionally capable at reasoning, problem-solving, and answering questions. You always provide direct, well-structured, and accurate responses, avoiding unnecessary filler. Since you run completely on-device, you prioritize efficiency and clarity in your interactions."
     )
 
   override fun initializeModelFn(
@@ -144,6 +145,7 @@ class LlmChatTask @Inject constructor() : CustomTask {
           }
         }
       },
+      onBenchmarkScreenClicked = myData.onBenchmarkScreenClicked
     )
   }
 }

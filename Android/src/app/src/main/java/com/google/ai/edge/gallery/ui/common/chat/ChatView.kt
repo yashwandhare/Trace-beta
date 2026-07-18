@@ -143,6 +143,7 @@ fun ChatView(
   allowEditingSystemPrompt: Boolean = false,
   curSystemPrompt: String = "",
   onSystemPromptChanged: (String) -> Unit = {},
+  onBenchmarkScreenClicked: (Model) -> Unit = {},
   sendMessageTrigger: SendMessageTrigger? = null,
 ) {
   val uiState by viewModel.uiState.collectAsState()
@@ -373,48 +374,58 @@ fun ChatView(
                 when (targetState) {
                   // Main UI when model is downloaded.
                   true ->
-                    ChatPanel(
-                      modelManagerViewModel = modelManagerViewModel,
-                      task = task,
-                      selectedModel = selectedModel,
-                      viewModel = viewModel,
-                      innerPadding = innerPadding,
-                      skillCount = skillCount,
-                      mcpCount = mcpCount,
-                      navigateUp = navigateUp,
-                      onSendMessage = { model, messages -> onSendMessage(model, messages) },
-                      onRunAgainClicked = onRunAgainClicked,
-                      onBenchmarkClicked = onBenchmarkClicked,
-                      onStreamImageMessage = onStreamImageMessage,
-                      onStreamEnd = { averageFps ->
-                        viewModel.addMessage(
-                          model = selectedModel,
-                          message =
-                            ChatMessageInfo(
-                              content = "Live camera session ended. Average FPS: $averageFps"
-                            ),
+                    Box(modifier = Modifier.weight(1f)) {
+                      ChatPanel(
+                        modelManagerViewModel = modelManagerViewModel,
+                        task = task,
+                        selectedModel = selectedModel,
+                        viewModel = viewModel,
+                        innerPadding = innerPadding,
+                        skillCount = skillCount,
+                        mcpCount = mcpCount,
+                        navigateUp = navigateUp,
+                        onSendMessage = { model, messages -> onSendMessage(model, messages) },
+                        onRunAgainClicked = onRunAgainClicked,
+                        onBenchmarkClicked = onBenchmarkClicked,
+                        onStreamImageMessage = onStreamImageMessage,
+                        onStreamEnd = { averageFps ->
+                          viewModel.addMessage(
+                            model = selectedModel,
+                            message =
+                              ChatMessageInfo(
+                                content = "Live camera session ended. Average FPS: $averageFps"
+                              ),
+                          )
+                        },
+                        onStopButtonClicked = { onStopButtonClicked(selectedModel) },
+                        onImageSelected = { bitmaps, selectedBitmapIndex ->
+                          selectedImageIndex = selectedBitmapIndex
+                          allImageViewerImages = bitmaps
+                          showImageViewer = true
+                        },
+                        onSkillClicked = onSkillClicked,
+                        onMcpClicked = onMcpClicked,
+                        modifier = Modifier.fillMaxSize(),
+                        showStopButtonInInputWhenInProgress = showStopButtonInInputWhenInProgress,
+                        showImagePicker = showImagePicker,
+                        showAudioPicker = showAudioPicker,
+                        emptyStateComposable = emptyStateComposable,
+                      )
+                      val initializationStatus = modelManagerUiState.modelInitializationStatus[selectedModel.name]
+                      val initializing = initializationStatus?.status == ModelInitializationStatusType.INITIALIZING
+                      if (initializing) {
+                        androidx.compose.material3.CircularProgressIndicator(
+                          modifier = Modifier.align(Alignment.Center)
                         )
-                      },
-                      onStopButtonClicked = { onStopButtonClicked(selectedModel) },
-                      onImageSelected = { bitmaps, selectedBitmapIndex ->
-                        selectedImageIndex = selectedBitmapIndex
-                        allImageViewerImages = bitmaps
-                        showImageViewer = true
-                      },
-                      onSkillClicked = onSkillClicked,
-                      onMcpClicked = onMcpClicked,
-                      modifier = Modifier.weight(1f),
-                      showStopButtonInInputWhenInProgress = showStopButtonInInputWhenInProgress,
-                      showImagePicker = showImagePicker,
-                      showAudioPicker = showAudioPicker,
-                      emptyStateComposable = emptyStateComposable,
-                    )
+                      }
+                    }
                   // Model download
                   false ->
                     ModelDownloadStatusInfoPanel(
                       model = selectedModel,
                       task = task,
                       modelManagerViewModel = modelManagerViewModel,
+                      onBenchmarkClicked = { onBenchmarkScreenClicked(it) }
                     )
                 }
               }

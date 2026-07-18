@@ -195,7 +195,6 @@ data class AllowedModel(
     var showBenchmarkButton = true
     var showRunAgainButton = true
     if (isLlmModel) {
-      showBenchmarkButton = false
       showRunAgainButton = false
     }
     return Model(
