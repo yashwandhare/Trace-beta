@@ -109,7 +109,8 @@ fun VisionCameraScreen(
       modelManagerViewModel = modelManagerViewModel,
       taskId = BuiltInTaskId.VISION,
       navigateUp = { capturedBitmap = null }, // Back button goes back to camera
-      emptyStateComposable = { } // Keep it empty for overlay
+      emptyStateComposable = { }, // Keep it empty for overlay
+      showImagePicker = true
     )
   } else {
     // Show Camera View

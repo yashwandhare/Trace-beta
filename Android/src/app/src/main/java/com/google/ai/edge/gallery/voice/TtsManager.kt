@@ -19,6 +19,7 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
             if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
                 Log.e("TtsManager", "Language not supported")
             } else {
+                tts?.setSpeechRate(1.25f)
                 isInitialized = true
             }
         } else {

@@ -283,72 +283,65 @@ fun HomeScreen(
         drawerContent = {
           ModalDrawerSheet {
             Column(modifier = Modifier.padding(16.dp)) {
-              Row(modifier = Modifier.fillMaxWidth()) {
-                SquareDrawerItem(
-                  label = stringResource(R.string.drawer_settings_label),
-                  description = stringResource(R.string.drawer_settings_description),
-                  icon = Icons.Rounded.Settings,
-                  onClick = {
-                    showSettingsDialog = true
-                    scope.launch { drawerState.close() }
-                  },
-                  modifier = Modifier.weight(1f),
-                  iconBrush =
-                    linearGradient(
-                      colors =
-                        listOf(
-                          MaterialTheme.customColors.taskBgGradientColors[2][0],
-                          MaterialTheme.customColors.taskBgGradientColors[2][1],
-                        )
-                    ),
-                )
-                Spacer(modifier = Modifier.width(16.dp))
-                SquareDrawerItem(
-                  label = "Search Scope",
-                  description = "Configure semantic search folders",
-                  icon = Icons.Rounded.Search,
-                  onClick = {
-                    showSearchScopeDialog = true
-                    scope.launch { drawerState.close() }
-                  },
-                  modifier = Modifier.weight(1f),
-                  iconBrush =
-                    linearGradient(
-                      colors =
-                        listOf(
-                          MaterialTheme.customColors.taskBgGradientColors[0][0],
-                          MaterialTheme.customColors.taskBgGradientColors[0][1],
-                        )
-                    ),
-                )
-              }
+              SquareDrawerItem(
+                label = stringResource(R.string.drawer_settings_label),
+                description = stringResource(R.string.drawer_settings_description),
+                icon = Icons.Rounded.Settings,
+                onClick = {
+                  showSettingsDialog = true
+                  scope.launch { drawerState.close() }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                iconBrush =
+                  linearGradient(
+                    colors =
+                      listOf(
+                        MaterialTheme.customColors.taskBgGradientColors[2][0],
+                        MaterialTheme.customColors.taskBgGradientColors[2][1],
+                      )
+                  ),
+              )
               Spacer(modifier = Modifier.height(16.dp))
-              Row(modifier = Modifier.fillMaxWidth()) {
-                SquareDrawerItem(
-                  label = stringResource(R.string.drawer_models_label),
-                  description = stringResource(R.string.drawer_models_description),
-                  icon = Icons.AutoMirrored.Rounded.ListAlt,
-                  onClick = {
-                    scope.launch { drawerState.close() }
-                    scope.launch {
-                      delay(50)
-                      onModelsClicked()
-                    }
-                  },
-                  modifier = Modifier.weight(1f),
-                  iconBrush =
-                    linearGradient(
-                      colors =
-                        listOf(
-                          MaterialTheme.customColors.taskBgGradientColors[1][0],
-                          MaterialTheme.customColors.taskBgGradientColors[1][1],
-                        )
-                    ),
-                )
-              }
+              SquareDrawerItem(
+                label = "Search Scope",
+                description = "Configure semantic search folders",
+                icon = Icons.Rounded.Search,
+                onClick = {
+                  showSearchScopeDialog = true
+                  scope.launch { drawerState.close() }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                iconBrush =
+                  linearGradient(
+                    colors =
+                      listOf(
+                        MaterialTheme.customColors.taskBgGradientColors[0][0],
+                        MaterialTheme.customColors.taskBgGradientColors[0][1],
+                      )
+                  ),
+              )
               Spacer(modifier = Modifier.height(16.dp))
-              Row(modifier = Modifier.fillMaxWidth()) {
-              }
+              SquareDrawerItem(
+                label = stringResource(R.string.drawer_models_label),
+                description = stringResource(R.string.drawer_models_description),
+                icon = Icons.AutoMirrored.Rounded.ListAlt,
+                onClick = {
+                  scope.launch { drawerState.close() }
+                  scope.launch {
+                    delay(50)
+                    onModelsClicked()
+                  }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                iconBrush =
+                  linearGradient(
+                    colors =
+                      listOf(
+                        MaterialTheme.customColors.taskBgGradientColors[1][0],
+                        MaterialTheme.customColors.taskBgGradientColors[1][1],
+                      )
+                  ),
+              )
             }
           }
         },
@@ -878,51 +871,7 @@ private fun TaskList(
     initialAnimationDone = true
   }
 
-  // The highlighted tiles at the top.
-  if (gm4) {
-    Column(
-      verticalArrangement = Arrangement.spacedBy(10.dp),
-      modifier =
-        Modifier.padding(horizontal = 24.dp).graphicsLayer {
-          alpha = progress
-          translationY = (CONTENT_COMPOSABLES_OFFSET_Y.dp * (1 - progress)).toPx()
-        },
-    ) {
-      val chatToDescription =
-        mapOf(
-          BuiltInTaskId.LLM_CHAT to "Chat with the latest Gemma model today",
-          BuiltInTaskId.VISION to "Scan the world with your camera and chat about it",
-        )
-      
-      val highlightTasks = listOfNotNull(
-        modelManagerViewModel.getTaskById(BuiltInTaskId.LLM_CHAT),
-        modelManagerViewModel.getTaskById(BuiltInTaskId.VISION)
-      )
-      
-      for (task in highlightTasks) {
-        TaskCard(
-          task = task,
-          index = 0,
-          animate = !initialAnimationDone && enableAnimation,
-          onClick = { navigateToTaskScreen(task) },
-          modifier = Modifier.fillMaxWidth(),
-          description = chatToDescription[task.id] ?: "",
-        )
-      }
-
-      Text(
-        text = "Explore other use cases",
-        style =
-          MaterialTheme.typography.headlineSmall.copy(
-            fontWeight = FontWeight.Medium,
-            fontSize = 20.sp,
-            lineHeight = 24.sp,
-          ),
-        color = MaterialTheme.colorScheme.onSurface,
-        modifier = Modifier.padding(top = 22.dp, bottom = 16.dp),
-      )
-    }
-  }
+  // Removed the highlighted tiles and "Explore other use cases" heading as requested.
 
   HorizontalPager(
     state = pagerState,
@@ -938,38 +887,16 @@ private fun TaskList(
             translationY = (CONTENT_COMPOSABLES_OFFSET_Y.dp * (1 - progress)).toPx()
           },
       ) {
-        for (i in tasks.indices step 2) {
-          Row(
+        for (i in tasks.indices) {
+          TaskCard(
+            task = tasks[i],
+            index = i,
+            animate =
+              (pageIndex == 0 || pageIndex == 1) && !initialAnimationDone && enableAnimation,
+            onClick = { navigateToTaskScreen(tasks[i]) },
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-          ) {
-            // First item in the row
-            TaskCard(
-              task = tasks[i],
-              index = i,
-              animate =
-                (pageIndex == 0 || pageIndex == 1) && !initialAnimationDone && enableAnimation,
-              onClick = { navigateToTaskScreen(tasks[i]) },
-              modifier = Modifier.weight(1f),
-              square = true,
-            )
-
-            // Second item in the row, if it exists
-            if (i + 1 < tasks.size) {
-              TaskCard(
-                task = tasks[i + 1],
-                index = i + 1,
-                animate =
-                  (pageIndex == 0 || pageIndex == 1) && !initialAnimationDone && enableAnimation,
-                onClick = { navigateToTaskScreen(tasks[i + 1]) },
-                modifier = Modifier.weight(1f),
-                square = true,
-              )
-            } else {
-              // Add a spacer to fill the remaining space if there's only one item in the last row
-              Spacer(modifier = Modifier.weight(1f))
-            }
-          }
+            square = true,
+          )
         }
       }
     } else {
