@@ -61,6 +61,9 @@ import com.google.ai.edge.gallery.runtime.aicore.AICoreModelHelper
 import com.google.ai.edge.gallery.filefetch.SemanticFileMatcher
 import com.google.ai.edge.litertlm.Contents
 import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import com.google.ai.edge.gallery.data.convertValueToTargetType
+import java.lang.reflect.Type
 import com.google.gson.JsonSyntaxException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -327,6 +330,7 @@ constructor(
     for (task in curTasks) {
       for (model in task.models) {
         model.preProcess()
+        loadModelConfig(model)
       }
       // Move the model that is best for this task to the front.
       val bestModel = task.models.find { it.bestForTaskIds.contains(task.id) }
@@ -760,6 +764,7 @@ constructor(
           newConfigs.add(RESET_CONVERSATION_TURN_COUNT_CONFIG)
           model.configs = newConfigs
           model.preProcess()
+          loadModelConfig(model)
         }
       }
       task.updateTrigger.value = System.currentTimeMillis()
@@ -1257,6 +1262,7 @@ constructor(
         newConfigs.add(RESET_CONVERSATION_TURN_COUNT_CONFIG)
         model.configs = newConfigs
         model.preProcess()
+        loadModelConfig(model)
       }
       if (model.llmSupportMobileActions) {
         tasks.get(key = BuiltInTaskId.LLM_MOBILE_ACTIONS)?.models?.add(model)
@@ -1365,6 +1371,7 @@ constructor(
         runtimeType = RuntimeType.LITERT_LM,
       )
     model.preProcess()
+    loadModelConfig(model)
 
     return model
   }
@@ -1594,6 +1601,37 @@ constructor(
         )
 
     return downloadedFileExists || unzippedDirectoryExists
+  }
+
+  fun saveModelConfig(model: Model) {
+    val prefs = context.getSharedPreferences("model_configs", Context.MODE_PRIVATE)
+    val gson = Gson()
+    val json = gson.toJson(model.configValues)
+    prefs.edit().putString(model.name, json).apply()
+  }
+
+  fun loadModelConfig(model: Model) {
+    val prefs = context.getSharedPreferences("model_configs", Context.MODE_PRIVATE)
+    val json = prefs.getString(model.name, null)
+    if (json != null) {
+      try {
+        val type: Type = object : TypeToken<Map<String, Any>>() {}.type
+        val savedValues: Map<String, Any> = Gson().fromJson(json, type)
+        val mergedValues = model.configValues.toMutableMap()
+        for (config in model.configs) {
+            val key = config.key.label
+            if (savedValues.containsKey(key)) {
+                val value = savedValues[key]
+                if (value != null) {
+                    mergedValues[key] = convertValueToTargetType(value, config.valueType)
+                }
+            }
+        }
+        model.configValues = mergedValues
+      } catch (e: Exception) {
+        e.printStackTrace()
+      }
+    }
   }
 }
 

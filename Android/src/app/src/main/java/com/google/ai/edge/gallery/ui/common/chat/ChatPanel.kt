@@ -220,7 +220,10 @@ fun ChatPanel(
   // Stores if the list is at the scrollable area's bottom.
   var isAtBottom by remember { mutableStateOf(true) }
   LaunchedEffect(listState) {
-    snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index == (listState.layoutInfo.totalItemsCount - 1) }
+    snapshotFlow { 
+      val total = listState.layoutInfo.totalItemsCount
+      total == 0 || listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index == total - 1 
+    }
       .collectLatest { rawAtBottom ->
         if (!rawAtBottom) delay(500)
         isAtBottom = rawAtBottom

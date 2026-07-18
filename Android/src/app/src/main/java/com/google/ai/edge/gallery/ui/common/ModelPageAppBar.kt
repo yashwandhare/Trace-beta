@@ -264,6 +264,7 @@ fun ModelPageAppBar(
         model.prevConfigValues = oldConfigValues
         model.configValues = curConfigValues
 
+        modelManagerViewModel.saveModelConfig(model)
         modelManagerViewModel.updateConfigValuesUpdateTrigger()
 
         if (!task.handleModelConfigChangesInTask) {

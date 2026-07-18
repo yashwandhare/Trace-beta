@@ -246,6 +246,20 @@ fun ConfigDialog(
           horizontalArrangement = Arrangement.End,
           verticalAlignment = Alignment.CenterVertically,
         ) {
+          TextButton(
+            onClick = {
+              val defaultValues = mutableMapOf<String, Any>()
+              for (config in configs) {
+                defaultValues[config.key.label] = config.defaultValue
+              }
+              onOk(defaultValues, savedSystemPrompt, defaultSystemPrompt)
+            }
+          ) {
+            Text(stringResource(R.string.restore_defaults))
+          }
+
+          Spacer(modifier = Modifier.weight(1f))
+
           // Cancel button.
           if (showCancel) {
             TextButton(onClick = { onDismissed() }) { Text(stringResource(R.string.cancel)) }

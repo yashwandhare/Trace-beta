@@ -52,6 +52,7 @@
   <string name="best_overall" translatable="true">Best overall</string>
   <string name="model_list_experimental_label" translatable="true">EXPERIMENTAL</string>
   <string name="cancel" translatable="true">Cancel</string>
+  <string name="restore_defaults">Restore</string>
   <string name="category_unlabeled" translatable="true">Unlabeled</string>
   <string name="category_llm" translatable="true">LLM</string>
   <string name="category_agents" translatable="true">Agents</string>

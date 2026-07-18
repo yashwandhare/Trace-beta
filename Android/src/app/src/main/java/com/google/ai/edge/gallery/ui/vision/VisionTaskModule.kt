@@ -41,7 +41,7 @@ class VisionTask @Inject constructor() : CustomTask {
     Task(
       id = BuiltInTaskId.VISION,
       label = "Vision",
-      category = Category.EXPERIMENTAL,
+      category = Category.LLM,
       icon = Icons.Outlined.PhotoCamera,
       models = mutableListOf(),
       description = "Camera-based scan-and-chat for the real world",

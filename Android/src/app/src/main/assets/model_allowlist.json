@@ -17,7 +17,7 @@
         "maxTokens": 4096,
         "accelerators": "gpu,cpu"
       },
-      "taskTypes": ["llm_chat"],
+      "taskTypes": ["llm_chat", "vision"],
       "capabilities": ["llm_thinking"]
     }
   ]
