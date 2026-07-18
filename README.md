@@ -1,91 +1,86 @@
-# Google AI Edge Gallery ✨
+# Trace ✨
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/google-ai-edge/gallery)](https://github.com/google-ai-edge/gallery/releases)
 
 > **Trace** is modified from [Google AI Edge Gallery](https://github.com/google-ai-edge/gallery),
 > licensed under the [Apache License, Version 2.0](LICENSE). The original copyright notices and
 > license text are retained in this repository per the terms of the Apache 2.0 License.
 
-**Explore, Experience, and Evaluate the Future of On-Device Generative AI with Google AI Edge.**
+**A fully offline, voice-first Android assistant for your private content — files, documents, notes, and whatever is on your screen — without any of it ever leaving your device.**
 
-AI Edge Gallery is the premier destination for running the world's most powerful open-source Large Language Models (LLMs) on your mobile device. Experience high-performance Generative AI directly on your hardware—fully offline, private, and lightning-fast.
-
-**Now Featuring: Gemma 4**
-
-The latest version brings official support for the newly released Gemma 4 family. As the centerpiece of this release, Gemma 4 allows you to test the cutting edge of on-device AI. Experience advanced reasoning, logic, and creative capabilities without ever sending your data to a server.
+Trace is not a general-purpose chatbot. It is scoped specifically to private, personal data: identity documents, forms, medicines, class notes, screenshots. The reason it exists is that no cloud assistant can be trusted with that category of content, and no file manager can explain or reason about what's inside a file.
 
 
-| **Install the app today from Google Play** | **Install the app today from App Store** | **Download for macOS** |
-| :--- | :--- | :--- |
-| <a href='https://play.google.com/store/apps/details?id=com.google.ai.edge.gallery'><img alt='Get it on Google Play' height="120" src='https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png'/></a> | <a href="https://apps.apple.com/us/app/google-ai-edge-gallery/id6749645337?itscg=30200&itsct=apps_box_badge&mttnsubad=6749645337" style="display: inline-block;"> <img src="https://toolbox.marketingtools.apple.com/api/v2/badges/download-on-the-app-store/black/en-us?releaseDate=1771977600" alt="Download on the App Store" style="width: 244px; height: 88px; vertical-align: middle; object-fit: contain;" /></a> | <a href="https://dl.google.com/google-ai-edge-gallery/macos/dmg/GoogleAIEdgeGallery-0.1.0.dmg"><img alt='Download for macOS' width="257" height="97" src="https://github.com/user-attachments/assets/29c70795-93b3-4e8b-8752-0cad4e413182" /></a> |
+## What Trace Does
 
-For users without Google Play access, install the apk from the [**latest release**](https://github.com/google-ai-edge/gallery/releases/latest/)
+### 🖥️ Screen Explain
+Ask a spoken question about anything currently on your screen. Trace captures the screen (via MediaProjection), sends it alongside your voice question to Gemma 4 E2B running entirely on-device, and returns a spoken and on-screen answer.
+
+**Example:** *"Hey Trace, what does this line in my bank statement mean?"*
+
+### 📓 Notes → Flashcards / Quiz / Summary
+Your notes (photographed or typed) are OCR'd and indexed locally. A voice command triggers semantic retrieval over that index, and Gemma generates a quiz, flashcard set, or summary grounded in your actual content — not general knowledge.
+
+**Example:** *"Hey Trace, quiz me on my DBMS normalization notes."*
+
+### 📂 File Fetch
+Direct voice or text file lookup — ask for a file by name and Trace finds it via Android's Storage Access Framework, without any cloud search.
+
+**Example:** *"Hey Trace, pull up my driver's licence."*
+
+### 📄 File Summarize
+Once a file is located, summarize its contents using on-device OCR and Gemma. Works on scanned documents, handwritten notes, and photos of text.
 
 
-## App Preview
+## Why Local?
 
-<img width="480" alt="01" src="https://github.com/user-attachments/assets/a809ad78-aef4-4169-91ee-de7213cbb3bd" />
-<img width="480" alt="02" src="https://github.com/user-attachments/assets/1effd10d-f45a-4f7b-9435-f50f1bdd36b6" />
-<img width="480" alt="03" src="https://github.com/user-attachments/assets/e5089e41-2c18-4fbe-9011-ebe9e5a02044" />
-<img width="480" alt="04" src="https://github.com/user-attachments/assets/0f39d3ed-7403-4606-a7c6-b2c7e51ba6c1" />
-<img width="480" alt="05" src="https://github.com/user-attachments/assets/8c229e96-b598-4735-9f60-e96907e1d5d5" />
-<img width="480" alt="06" src="https://github.com/user-attachments/assets/ac9fb77b-81de-4197-9ed3-f6fe58290b3e" />
-<img width="480" alt="07" src="https://github.com/user-attachments/assets/bc86ba07-2eaf-49b1-980f-8a87a85c596f" />
-<img width="480" alt="08" src="https://github.com/user-attachments/assets/1ccf3c95-a195-4a38-ad53-4b9c7b8b3c50" />
+For this specific data category — ID documents, medical reports, government forms, personal notes — sending content to any cloud API is close to a non-starter on privacy grounds, independent of cost or latency. Trace fills exactly that gap:
 
-## ✨ Core Features
+- **Zero marginal cost per inference** — no per-token pricing, no usage caps
+- **No session limits** — unlike Gemini Live (2-min audio+video cap, 1 FPS throttle), Trace has no imposed ceiling on sustained interaction
+- **No network required** — every feature works in airplane mode, always
 
-* **Agent Skills**: Transform your LLM from a conversationalist into a proactive assistant. Use the Agent Skills tile to augment model capabilities with tools like Wikipedia for fact-grounding, interactive maps, and rich visual summary cards. You can even load modular skills from a URL or browse community contributions on GitHub Discussions.
 
-* **AI Chat with Thinking Mode**: Engage in fluid, multi-turn conversations and toggle the new Thinking Mode to peek "under the hood." This feature allows you to see the model’s step-by-step reasoning process, which is perfect for understanding complex problem-solving. Note: Thinking Mode currently works with supported models, starting with the Gemma 4 family.
+## Technology
 
-* **Ask Image**: Use multimodal power to identify objects, solve visual puzzles, or get detailed descriptions using your device’s camera or photo gallery.
+| Component | Technology |
+|---|---|
+| App shell & UI | Kotlin / Jetpack Compose |
+| Model runtime | Gemma 4 E2B-IT via LiteRT-LM (on-device, GPU-accelerated) |
+| Voice input | Gemma 4's native audio encoder (no separate STT stage) |
+| Screen capture | Android MediaProjection API |
+| Notes retrieval | Qdrant Edge (embedded Rust vector search, JNI bridge) |
+| Embeddings | FastEmbed / on-device embeddings |
 
-* **Audio Scribe**: Transcribe and translate voice recordings into text in real-time using high-efficiency on-device language models.
+Forked from [Google AI Edge Gallery](https://github.com/google-ai-edge/gallery). The LiteRT-LM model loading and inference plumbing is retained from the upstream fork; the app shell, UI, and product surface are Trace's own.
 
-* **Prompt Lab**: A dedicated workspace to test different prompts and single-turn use cases with granular control over model parameters like temperature and top-k.
 
-* **Mobile Actions**: Unlock offline device controls and automated tasks powered entirely by a finetune of FunctionGemma 270m.
+## Requirements
 
-* **Tiny Garden**: A fun, experimental mini-game that uses natural language to plant and harvest a virtual garden using a finetune of FunctionGemma 270m.
+- **Android 12+** (API level 31+)
+- **~6 GB RAM** recommended for Gemma 4 E2B-IT
+- No internet connection required — all features work fully offline
 
-* **Model Management & Benchmark**: Gallery is a flexible sandbox for a wide variety of open-source models. Easily download models from the list or load your own custom models. Manage your model library effortlessly and run benchmark tests to understand exactly how each model performs on your specific hardware.
 
-* **100% On-Device Privacy**: All model inferences happen directly on your device hardware. No internet is required, ensuring total privacy for your prompts, images, and sensitive data.
+## Development
 
-## 🏁 Get Started in Minutes!
+Check out the [development notes](DEVELOPMENT.md) for instructions on how to build the app locally.
 
-1. **Check OS Requirement**: Android 12 and up, and iOS 17 and up.
-2.  **Download the App:**
-    - Install the app from [Google Play](https://play.google.com/store/apps/details?id=com.google.ai.edge.gallery) or [App Store](https://apps.apple.com/us/app/google-ai-edge-gallery/id6749645337).
-    - For users without Google Play access: install the apk from the [**latest release**](https://github.com/google-ai-edge/gallery/releases/latest/)
-3.  **Install & Explore:** For detailed installation instructions (including for corporate devices) and a full user guide, head over to our [**Project Wiki**](https://github.com/google-ai-edge/gallery/wiki)!
+Branch model:
+- `main` — always stable, always the last known-good merged state
+- `dev-a` — Kazuto's working branch (model/voice pipeline, core architecture)
+- `dev-b` — Yash's working branch (UI, File Fetch, Quiz screens)
 
-## 🛠️ Technology Highlights
 
-*   **Google AI Edge:** Core APIs and tools for on-device ML.
-*   **LiteRT:** Lightweight runtime for optimized model execution.
-*   **Hugging Face Integration:** For model discovery and download.
+## Status
 
-## ⌨️ Development
+Active development — pre-release, hackathon sprint build. Not yet available on any app store.
 
-Check out the [development notes](DEVELOPMENT.md) for instructions about how to build the app locally.
+See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the phased build plan and [`docs/TODO.md`](docs/TODO.md) for current active tasks.
 
-## 🤝 Feedback
 
-This is an **experimental Beta release**, and your input is crucial!
-
-*   🐞 **Found a bug?** [Report it here!](https://github.com/google-ai-edge/gallery/issues/new?assignees=&labels=bug&template=bug_report.md&title=%5BBUG%5D)
-*   💡 **Have an idea?** [Suggest a feature!](https://github.com/google-ai-edge/gallery/issues/new?assignees=&labels=enhancement&template=feature_request.md&title=%5BFEATURE%5D)
-
-## 📄 License
+## License
 
 Licensed under the Apache License, Version 2.0. See the [LICENSE](LICENSE) file for details.
 
-## 🔗 Useful Links
-
-*   [**Project Wiki (Detailed Guides)**](https://github.com/google-ai-edge/gallery/wiki)
-*   [Hugging Face LiteRT Community](https://huggingface.co/litert-community)
-*   [LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM)
-*   [Google AI Edge Documentation](https://ai.google.dev/edge)
+This project is modified from [Google AI Edge Gallery](https://github.com/google-ai-edge/gallery) by Google LLC, originally licensed under Apache 2.0. Original copyright notices are retained.
