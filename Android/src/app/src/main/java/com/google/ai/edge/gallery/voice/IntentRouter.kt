@@ -11,7 +11,7 @@ data class IntentResult(
     val extractedFileName: String? = null
 )
 
-class IntentRouter {
+class IntentRouter(private val context: android.content.Context) {
     fun routeIntent(inputText: String): IntentResult {
         val lowerText = inputText.lowercase().trim()
         
@@ -22,11 +22,29 @@ class IntentRouter {
             lowerText.startsWith("open file ")) {
             
             val fileName = lowerText.substringAfter("file ").trim()
-            return IntentResult(
+            val intentResult = IntentResult(
                 type = IntentType.FILE_FETCH,
                 query = inputText,
                 extractedFileName = fileName
             )
+            
+            val handler = com.google.ai.edge.gallery.filefetch.DefaultIntentFileFetchHandler(context)
+            val fileResult = handler.handleFindFile(intentResult.query)
+            if (fileResult != null) {
+                val launchIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                    setDataAndType(fileResult.uri, context.contentResolver.getType(fileResult.uri) ?: "*/*")
+                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                try {
+                    context.startActivity(launchIntent)
+                } catch (e: Exception) {
+                    android.widget.Toast.makeText(context, "No app to open this file", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                android.widget.Toast.makeText(context, "File not found", android.widget.Toast.LENGTH_SHORT).show()
+            }
+            
+            return intentResult
         }
         
         // Otherwise, route to normal LLM chat

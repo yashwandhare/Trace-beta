@@ -131,8 +131,9 @@ class LlmChatTask @Inject constructor() : CustomTask {
     val systemPromptUpdatedMessage = stringResource(R.string.system_prompt_updated)
 
     val coroutineScope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
     val voiceViewModel: com.google.ai.edge.gallery.ui.common.textandvoiceinput.HoldToDictateViewModel = hiltViewModel()
-    val intentRouter = remember { IntentRouter() }
+    val intentRouter = remember { IntentRouter(context) }
 
     val voiceUiState by voiceViewModel.uiState.collectAsState()
 

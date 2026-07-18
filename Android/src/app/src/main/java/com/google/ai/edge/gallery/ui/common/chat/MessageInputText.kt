@@ -756,13 +756,18 @@ fun MessageInputText(
                         voiceViewModel.startSpeechRecognition(
                           onDone = { text ->
                             if (text.isNotBlank()) {
-                              onSendMessage(
-                                createMessagesToSend(
-                                  pickedImages = pickedImages,
-                                  audioClips = pickedAudioClips,
-                                  text = text.trim(),
+                              val intentRouter = com.google.ai.edge.gallery.voice.IntentRouter(context)
+                              val intentResult = intentRouter.routeIntent(text)
+                              
+                              if (intentResult.type == com.google.ai.edge.gallery.voice.IntentType.LLM_CHAT) {
+                                onSendMessage(
+                                  createMessagesToSend(
+                                    pickedImages = pickedImages,
+                                    audioClips = pickedAudioClips,
+                                    text = text.trim(),
+                                  )
                                 )
-                              )
+                              }
                               pickedImages = listOf()
                               pickedAudioClips = listOf()
                               onValueChanged("")
