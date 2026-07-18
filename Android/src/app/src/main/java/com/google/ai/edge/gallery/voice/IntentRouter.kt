@@ -68,9 +68,9 @@ class IntentRouter(private val context: android.content.Context) {
         // Weak verbs: common words that only become file-fetch signals when combined
         // with an explicit file-type qualifier in the target phrase
         val weakVerbRegex = Regex(
-            "(?:show|get|open|read|access|find|look\\s+for)\\s+" +
+            "(?:show|get|open|read|access|find|look\\s+for|search(?:\\s+for)?)\\s+" +
             "(?:(?:my|the|a|an)\\s+)?" +
-            "(?:file\\s+|document\\s+|photo\\s+|image\\s+|pdf\\s+|picture\\s+|screenshot\\s+|scan\\s+|receipt\\s+|id\\s+|card\\s+|license\\s+|certificate\\s+|form\\s+|report\\s+)" +
+            "(?:file\\s+|document\\s+|photo\\s+|image\\s+|pdf\\s+|picture\\s+|screenshot\\s+|scan\\s+|receipt\\s+|id\\s+|card\\s+|license\\s+|certificate\\s+|form\\s+|report\\s+|resume\\s+|cv\\s+|invoice\\s+|ticket\\s+|bill\\s+|letter\\s+)" +
             "(.+)?",
             RegexOption.IGNORE_CASE
         )
