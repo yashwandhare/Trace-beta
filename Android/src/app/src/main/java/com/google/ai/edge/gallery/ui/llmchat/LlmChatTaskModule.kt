@@ -161,6 +161,8 @@ class LlmChatTask @Inject constructor() : CustomTask {
           systemPromptUpdatedMessage = systemPromptUpdatedMessage,
         )
       },
+      showImagePicker = true,
+      showAudioPicker = true,
       composableBelowMessageList = { model ->
         // PttOverlay is now built into MessageInputText
       },
