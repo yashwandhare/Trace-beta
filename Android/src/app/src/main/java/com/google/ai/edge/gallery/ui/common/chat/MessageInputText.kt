@@ -213,6 +213,7 @@ fun MessageInputText(
   var showAudioRecorder by remember { mutableStateOf(false) }
   val audioRecorderSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
   var pickedImages by remember { mutableStateOf<List<Bitmap>>(listOf()) }
+  var pickedFiles by remember { mutableStateOf<List<android.net.Uri>>(listOf()) }
   var pickedAudioClips by remember { mutableStateOf<List<AudioClip>>(listOf()) }
   var hasFrontCamera by remember { mutableStateOf(false) }
   val sensorObserver = remember { SensorObserver(context) }
@@ -411,6 +412,7 @@ fun MessageInputText(
             onSendVoiceMessage(
               createMessagesToSend(
                 pickedImages = pickedImages,
+                pickedFiles = pickedFiles,
                 audioClips = pickedAudioClips,
                 text = text.trim(),
               ).map { message ->
@@ -431,6 +433,7 @@ fun MessageInputText(
             performFileFetch(intentResult.extractedFileName ?: "")
           }
           updatePickedImages(listOf())
+          pickedFiles = listOf()
           pickedAudioClips = listOf()
           onValueChanged("")
         }
@@ -461,6 +464,19 @@ fun MessageInputText(
             uris = uris,
             onImagesSelected = { bitmaps -> updatePickedImages(bitmaps) },
           )
+        }
+      }
+    }
+
+  val pickFile =
+    rememberLauncherForActivityResult(
+      contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+      if (uri != null) {
+        val currentFiles = pickedFiles.toMutableList()
+        if (!currentFiles.contains(uri)) {
+          currentFiles.add(uri)
+          pickedFiles = currentFiles
         }
       }
     }
@@ -498,7 +514,7 @@ fun MessageInputText(
 
   Column {
     // A preview panel for the selected images and audio clips.
-    if (pickedImages.isNotEmpty() || pickedAudioClips.isNotEmpty()) {
+    if (pickedImages.isNotEmpty() || pickedAudioClips.isNotEmpty() || pickedFiles.isNotEmpty()) {
       Row(
         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -517,6 +533,25 @@ fun MessageInputText(
                   .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp)),
             )
             MediaPanelCloseButton { pickedImages = pickedImages.filter { image != it } }
+          }
+        }
+
+        for (fileUri in pickedFiles) {
+          Box(modifier = Modifier.size(64.dp).padding(4.dp)) {
+            // Draw a simple file icon chip
+            Box(
+              modifier = Modifier.fillMaxSize()
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+              contentAlignment = Alignment.Center
+            ) {
+              Icon(
+                imageVector = Icons.Rounded.InsertDriveFile,
+                contentDescription = "File",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+              )
+            }
+            MediaPanelCloseButton { pickedFiles = pickedFiles.filter { fileUri != it } }
           }
         }
 
@@ -646,6 +681,22 @@ fun MessageInputText(
                               if (isImageSupported) Color.Unspecified
                               else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
                           )
+                        DropdownMenuItem(
+                          text = {
+                            Row(
+                              verticalAlignment = Alignment.CenterVertically,
+                              horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                              Icon(Icons.Rounded.InsertDriveFile, contentDescription = null)
+                              Text("Attach document")
+                            }
+                          },
+                          onClick = {
+                            showAddContentMenu = false
+                            pickFile.launch(arrayOf("application/pdf", "text/plain", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+                          },
+                        )
+
                         // Take a picture.
                         DropdownMenuItem(
                           text = {
@@ -944,7 +995,7 @@ fun MessageInputText(
                       enabled =
                         !inProgress &&
                           !isResettingSession &&
-                          (curMessage.isNotEmpty() || pickedAudioClips.isNotEmpty()),
+                          (curMessage.isNotEmpty() || pickedAudioClips.isNotEmpty() || pickedFiles.isNotEmpty()),
                       onClick = {
                         val message = curMessage.trim()
                         val intentResult = com.google.ai.edge.gallery.voice.IntentRouter(context).routeIntent(message)
@@ -964,13 +1015,16 @@ fun MessageInputText(
                           com.google.ai.edge.gallery.voice.IntentType.LLM_CHAT -> onSendMessage(
                             createMessagesToSend(
                               pickedImages = pickedImages,
+                              pickedFiles = pickedFiles,
                               audioClips = pickedAudioClips,
                               text = message,
                             )
                           )
                         }
-                        pickedImages = listOf()
+                        updatePickedImages(listOf())
+                        pickedFiles = listOf()
                         pickedAudioClips = listOf()
+                        onValueChanged("")
                       },
                       colors =
                         IconButtonDefaults.iconButtonColors(
@@ -1024,11 +1078,13 @@ fun MessageInputText(
         onSendMessage(
           createMessagesToSend(
             pickedImages = pickedImages,
+            pickedFiles = pickedFiles,
             audioClips = pickedAudioClips,
             text = item,
           )
         )
         pickedImages = listOf()
+        pickedFiles = listOf()
         pickedAudioClips = listOf()
         modelManagerViewModel.promoteTextInputHistoryItem(item)
       },
@@ -1333,6 +1389,7 @@ private fun checkFrontCamera(context: Context, callback: (Boolean) -> Unit) {
 
 private fun createMessagesToSend(
   pickedImages: List<Bitmap>,
+  pickedFiles: List<android.net.Uri> = listOf(),
   audioClips: List<AudioClip>,
   text: String,
 ): List<ChatMessage> {
@@ -1349,6 +1406,15 @@ private fun createMessagesToSend(
       ChatMessageImage(
         bitmaps = curPickedImages,
         imageBitMaps = curPickedImages.map { it.asImageBitmap() },
+        side = ChatSide.USER,
+      )
+    )
+  }
+
+  if (pickedFiles.isNotEmpty()) {
+    messages.add(
+      ChatMessageFile(
+        uris = pickedFiles,
         side = ChatSide.USER,
       )
     )

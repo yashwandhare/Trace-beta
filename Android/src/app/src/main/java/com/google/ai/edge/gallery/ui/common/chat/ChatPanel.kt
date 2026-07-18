@@ -447,6 +447,9 @@ fun ChatPanel(
                       // Audio clip.
                       is ChatMessageAudioClip -> MessageBodyAudioClip(message = message)
 
+                      // File.
+                      is ChatMessageFile -> MessageBodyFile(message = message)
+
                       // Benchmark result.
                       is ChatMessageBenchmarkResult -> MessageBodyBenchmark(message = message)
 

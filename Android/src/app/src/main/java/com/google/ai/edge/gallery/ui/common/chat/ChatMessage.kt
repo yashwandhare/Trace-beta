@@ -35,6 +35,7 @@ enum class ChatMessageType {
   ERROR,
   TEXT,
   IMAGE,
+  FILE,
   IMAGE_WITH_HISTORY,
   AUDIO_CLIP,
   LOADING,
@@ -175,6 +176,32 @@ class ChatMessageImage(
       accelerator = accelerator,
       hideSenderLabel = hideSenderLabel,
       persistedPaths = persistedPaths?.toList(),
+    )
+  }
+}
+
+/** Chat message for files (documents). */
+class ChatMessageFile(
+  val uris: List<android.net.Uri>,
+  override val side: ChatSide,
+  override val latencyMs: Float = 0f,
+  override val accelerator: String = "",
+  override val hideSenderLabel: Boolean = false,
+) :
+  ChatMessage(
+    type = ChatMessageType.FILE,
+    side = side,
+    latencyMs = latencyMs,
+    accelerator = accelerator,
+    hideSenderLabel = hideSenderLabel,
+  ) {
+  override fun clone(): ChatMessageFile {
+    return ChatMessageFile(
+      uris = uris.toList(),
+      side = side,
+      latencyMs = latencyMs,
+      accelerator = accelerator,
+      hideSenderLabel = hideSenderLabel,
     )
   }
 }
