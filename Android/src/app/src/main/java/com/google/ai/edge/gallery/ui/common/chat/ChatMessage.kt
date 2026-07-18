@@ -35,6 +35,7 @@ enum class ChatMessageType {
   ERROR,
   TEXT,
   IMAGE,
+  DOCUMENT,
   IMAGE_WITH_HISTORY,
   AUDIO_CLIP,
   LOADING,
@@ -433,6 +434,25 @@ class ChatMessageThinking(
       side = side,
       hideSenderLabel = hideSenderLabel,
       accelerator = accelerator,
+    )
+  }
+}
+
+/** Chat message for document attachments (e.g. PDF, TXT) used for RAG input. */
+class ChatMessageDocument(
+  val uri: android.net.Uri,
+  val fileName: String,
+  val mimeType: String,
+  override val side: ChatSide,
+  override val latencyMs: Float = 0f,
+) : ChatMessage(type = ChatMessageType.DOCUMENT, side = side, latencyMs = latencyMs) {
+  override fun clone(): ChatMessageDocument {
+    return ChatMessageDocument(
+      uri = uri,
+      fileName = fileName,
+      mimeType = mimeType,
+      side = side,
+      latencyMs = latencyMs,
     )
   }
 }
