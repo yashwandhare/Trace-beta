@@ -127,6 +127,10 @@ offline, on the real device. File Fetch working via voice command. Merged to `ma
       independently of whether the RAG pipeline is ready yet
 - [ ] Finish OCR quality findings from Phase 2, report to Dev A
 
+**Dev C (If joining):**
+- [ ] Support Dev A in JNI bridge development and embedding pipeline validation
+- [ ] Cross-check RAG data structures between Dev A's backend and Dev B's UI models
+
 **Gate:** Voice-triggered quiz generation from real notes, rendered in the Dev B-built UI, working
 offline. If Dev A's RAG pipeline hit the fallback path, the gate is: fallback feature (e.g.,
 single-note summarize) working end to end instead. Merged to `main`, confirmed working.

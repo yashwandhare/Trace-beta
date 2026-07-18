@@ -66,47 +66,46 @@ no screen capture, no RAG yet.)
 
 ---
 
-## NEXT: Phase 1 — Core Voice Loop
-(Do not start until Phase 0 gate is confirmed met.)
+## COMPLETED: Phase 1 — Core Voice Loop
 
 ### Dev A
-- [ ] Wire push-to-talk capture start/stop
-- [ ] Route captured audio to Gemma's native audio path
-- [ ] Wire TTS output
-- [ ] Build minimal rule-based intent router
+- [x] Wire push-to-talk capture start/stop (changed to tap-to-toggle)
+- [x] Route captured audio to Gemma's native audio path (used text via Android SpeechRecognition)
+- [x] Wire TTS output
+- [x] Build minimal rule-based intent router
 
 ### Dev B
-- [ ] Build push-to-talk button UI (idle/listening/processing states) — Compose UI only, callbacks wired
-      to Dev A's logic
-- [ ] Begin File Fetch: isolated module, `fun findFile(query: String): FileResult?`, no dependency on
-      model/voice/router code yet
+- [x] Build push-to-talk button UI (idle/listening/processing states)
+- [x] Begin File Fetch: isolated module
 
 ### Merge checkpoint
-- [ ] Dev A merges `dev-b` → `main`
-- [ ] Dev A merges `dev-a` → `main`
-- [ ] Dev A builds and tests combined `main`
-- [ ] Gate met? → move to Phase 2.
+- [x] Dev A merges `dev-b` → `main`
+- [x] Dev A merges `dev-a` → `main`
+- [x] Dev A builds and tests combined `main`
+- [x] Gate met? → Phase 1 complete.
 
 ---
 
-## LATER: Phase 2 — Screen Explain
-(Do not start until Phase 1 gate is confirmed met. Full task detail in `/ROADMAP.md`.)
+## COMPLETED: Phase 2 — Screen Explain
 
 ### Dev A
-- [ ] MediaProjection permission flow
-- [ ] Screen capture → Gemma vision + voice question → response
+- [x] MediaProjection permission flow
+- [x] Screen capture → Gemma vision + voice question → response (Continuous Gemini Live mode implemented)
 
 ### Dev B
-- [ ] Finish File Fetch, connect to intent router's direct-action path (coordinate interface with Dev A
-      first)
-- [ ] OCR quality test pass on real sample notes, report findings
+- [x] Finish File Fetch, connect to intent router's direct-action path
+- [x] OCR quality test pass on real sample notes, report findings
 
-### Merge checkpoint — same pattern as above.
+### Merge checkpoint
+- [x] Dev A merges `dev-b` → `main`
+- [x] Dev A merges `dev-a` → `main`
+- [x] Dev A builds and tests combined `main`
+- [x] Gate met? → Phase 2 complete.
 
 ---
 
-## LATER: Phase 3 — Notes RAG Pipeline
-(Do not start until Phase 2 gate is confirmed met. Highest-risk phase — full detail in `/ROADMAP.md`.)
+## ACTIVE PHASE: Phase 3 — Notes RAG Pipeline
+(Highest-risk phase — full detail in `/ROADMAP.md`.)
 
 ### Dev A
 - [ ] Qdrant Edge Rust crate for Android + JNI bridge
@@ -117,6 +116,10 @@ no screen capture, no RAG yet.)
 ### Dev B
 - [ ] Quiz/Flashcard UI in Compose, built against a `QuizItem` mock data shape Dev A defines first
 - [ ] Report OCR findings from Phase 2
+
+### Dev C (If joining)
+- [ ] Coordinate with Dev A and Dev B on RAG pipeline data structures
+- [ ] Assist with JNI bridge or embedding pipeline depending on Rust/Kotlin expertise
 
 ### Merge checkpoint — same pattern as above.
 

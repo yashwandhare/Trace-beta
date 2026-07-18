@@ -50,3 +50,15 @@ Format:
   - Time to first token: 3.39 sec
   - Cold load (First init time): 19495.95 ms (~19.5s)
   - Warm load (Steady init time): 14038.13 ms (~14.0s)
+
+---
+
+## 2026-07-18 — Dev A & Dev B — Phase 1 & 2
+- Did: 
+  - Wired TTS output and integrated Android SpeechRecognizer for voice input.
+  - Built intent routing engine for file fetching and screen explaining.
+  - Implemented background continuous screen capture via MediaProjection for a Gemini Live-style experience.
+  - Wired FileFetcher to launch Android's default file viewer via Intent router.
+  - Dev B completed local UI implementations for the tap-to-toggle Mic button and local OCR testing.
+- Broken/open: None. Phase 1 and Phase 2 are complete, stable, and pushed to main. Ready for Phase 3.
+- Benchmark numbers: APK size grew to ~190MB due to ML Kit OCR and new modules.
