@@ -18,13 +18,13 @@ Check off items as they're done. Move to the next phase's tasks only after that 
 no screen capture, no RAG yet.)
 
 ### Dev A (Kazuto) — branch `dev-a`
-- [ ] Fork is confirmed Apache 2.0. Keep the LICENSE file in the repo (and NOTICE file if one exists,
+- [x] Fork is confirmed Apache 2.0. Keep the LICENSE file in the repo (and NOTICE file if one exists,
       with its attribution content intact) — quietly in the repo, not surfaced in the app UI. Add a
       short note in the repo (e.g., in README or NOTICE) that Trace is modified from Google AI Edge
       Gallery, Apache 2.0 licensed. That's the full legal obligation — everything else (in-app TOS
       screens, onboarding, marketing copy, branding) is free to strip, it's product content, not license
       text
-- [ ] Confirm Gemma 4 E2B-IT loads correctly after Dev B's stripping work
+- [x] Confirm Gemma 4 E2B-IT loads correctly after Dev B's stripping work
 
 ### Dev B (Yash) — branch `dev-b`
 - [ ] Remove Google product branding, marketing copy, and TOS/onboarding screens — all of this is free

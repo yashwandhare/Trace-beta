@@ -78,7 +78,7 @@ import com.google.ai.edge.gallery.BuildConfig
 import com.google.ai.edge.gallery.R
 import com.google.ai.edge.gallery.proto.Theme
 import com.google.ai.edge.gallery.ui.common.ClickableLink
-import com.google.ai.edge.gallery.ui.common.tos.AppTosDialog
+
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import com.google.ai.edge.gallery.ui.theme.ThemeSettings
 import com.google.ai.edge.gallery.ui.theme.labelSmallNarrow
@@ -110,7 +110,6 @@ fun SettingsDialog(
   var isFocused by remember { mutableStateOf(false) }
   val focusRequester = remember { FocusRequester() }
   val interactionSource = remember { MutableInteractionSource() }
-  var showTos by remember { mutableStateOf(false) }
 
   Dialog(onDismissRequest = onDismissed) {
     val focusManager = LocalFocusManager.current
@@ -348,9 +347,7 @@ fun SettingsDialog(
               stringResource(R.string.settings_dialog_tos_title),
               style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
             )
-            OutlinedButton(onClick = { showTos = true }) {
-              Text(stringResource(R.string.settings_dialog_view_app_terms_of_service))
-            }
+
             ClickableLink(
               url = "https://ai.google.dev/gemma/terms",
               linkText = stringResource(R.string.tos_dialog_title_gemma),
@@ -376,9 +373,7 @@ fun SettingsDialog(
     }
   }
 
-  if (showTos) {
-    AppTosDialog(onTosAccepted = { showTos = false }, viewingMode = true)
-  }
+
 }
 
 @StringRes

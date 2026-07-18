@@ -68,7 +68,7 @@ import com.google.ai.edge.gallery.data.ModelDownloadStatusType
 import com.google.ai.edge.gallery.data.RuntimeType
 import com.google.ai.edge.gallery.data.Task
 import com.google.ai.edge.gallery.ui.common.MarkdownText
-import com.google.ai.edge.gallery.ui.common.tos.TosViewModel
+
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import com.google.ai.edge.gallery.ui.theme.bodyMediumMedium
 import com.google.ai.edge.gallery.ui.theme.customColors
@@ -95,7 +95,6 @@ fun ModelItem(
   showBenchmarkButton: Boolean = false,
   onExpanded: (Boolean) -> Unit = {},
   modelVariants: List<Model> = listOf(),
-  tosViewModel: TosViewModel? = null,
 ) {
   val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
   val downloadStatus by remember {
@@ -210,7 +209,6 @@ fun ModelItem(
               modelManagerViewModel = modelManagerViewModel,
               isExpanded = targetIsExpanded,
               onTryItClicked = { onModelClicked(model) },
-              tosViewModel = tosViewModel,
             )
           }
         }

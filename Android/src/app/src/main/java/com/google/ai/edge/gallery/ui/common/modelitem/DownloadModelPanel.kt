@@ -47,7 +47,7 @@ import com.google.ai.edge.gallery.data.ModelDownloadStatusType
 import com.google.ai.edge.gallery.data.RuntimeType
 import com.google.ai.edge.gallery.data.Task
 import com.google.ai.edge.gallery.ui.common.DownloadAndTryButton
-import com.google.ai.edge.gallery.ui.common.tos.TosViewModel
+
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 
 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -62,7 +62,6 @@ fun DownloadModelPanel(
   sharedTransitionScope: SharedTransitionScope,
   animatedVisibilityScope: AnimatedVisibilityScope,
   onTryItClicked: () -> Unit,
-  tosViewModel: TosViewModel? = null,
   modifier: Modifier = Modifier,
   downloadButtonBackgroundColor: Color = MaterialTheme.colorScheme.surfaceContainer,
 ) {
@@ -144,7 +143,6 @@ fun DownloadModelPanel(
             animatedVisibilityScope = animatedVisibilityScope,
           ),
         modifierWhenExpanded = Modifier.weight(1f),
-        tosViewModel = tosViewModel ?: hiltViewModel(),
         downloadButtonBackgroundColor = downloadButtonBackgroundColor,
       )
     }

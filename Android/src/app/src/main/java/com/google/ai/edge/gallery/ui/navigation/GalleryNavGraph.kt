@@ -30,6 +30,8 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
@@ -72,7 +74,7 @@ import com.google.ai.edge.gallery.data.ModelDownloadStatusType
 import com.google.ai.edge.gallery.data.Task
 import com.google.ai.edge.gallery.data.isLegacyTasks
 import com.google.ai.edge.gallery.firebaseAnalytics
-import com.google.ai.edge.gallery.ui.home.HomeScreen
+
 import com.google.ai.edge.gallery.ui.common.ErrorDialog
 import com.google.ai.edge.gallery.ui.common.ModelPageAppBar
 import com.google.ai.edge.gallery.ui.common.chat.ModelDownloadStatusInfoPanel
@@ -176,27 +178,22 @@ fun GalleryNavHost(
   ) {
     // Home screen.
     composable(route = ROUTE_HOMESCREEN) {
-      Box(modifier = modifier.fillMaxSize()) {
-        HomeScreen(
-          modelManagerViewModel = modelManagerViewModel,
-          enableAnimation = enableHomeScreenAnimation,
-          navigateToTaskScreen = { task ->
-            pickedTask = task
-            // Navigate directly to the model page, picking the first model.
-            val firstModel = task.models.firstOrNull()
-            if (firstModel != null) {
-              navController.navigate("$ROUTE_MODEL/${task.id}/${firstModel.name}")
-            }
-            firebaseAnalytics?.logEvent(
-              GalleryEvent.CAPABILITY_SELECT.id,
-              Bundle().apply { putString("capability_name", task.id) },
-            )
-          },
-          onModelsClicked = { /* model manager removed */ },
-          onNotificationsClicked = { /* notifications removed */ },
-          gm4 = true,
-        )
+      val task = modelManagerUiState.tasks.firstOrNull()
+      val firstModel = task?.models?.firstOrNull()
+      
+      LaunchedEffect(task, firstModel) {
+        if (task != null && firstModel != null) {
+          navController.navigate("$ROUTE_MODEL/${task.id}/${firstModel.name}") {
+            popUpTo(ROUTE_HOMESCREEN) { inclusive = true }
+          }
+          firebaseAnalytics?.logEvent(
+            GalleryEvent.CAPABILITY_SELECT.id,
+            Bundle().apply { putString("capability_name", task.id) },
+          )
+        }
       }
+      
+      Box(modifier = modifier.fillMaxSize())
     }
 
     // Model page — hosts LlmChatScreen (and any other task screens).
