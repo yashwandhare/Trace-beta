@@ -147,13 +147,11 @@ class FileFetcher(private val context: Context) {
         MediaStore.MediaColumns.SIZE,
       )
 
-    // Voice transcription often differs from the filename's punctuation or extension (for
-    // example, "driver's license" versus "Drivers License.pdf"). Match meaningful words
-    // independently so file commands do not fall through to the chat model for that reason.
+    val extensions = setOf("jpg", "jpeg", "png", "gif", "pdf", "doc", "docx", "txt", "mp3", "mp4", "wav")
     val queryTokens = query
       .lowercase()
       .split(Regex("[^\\p{L}\\p{N}]+"))
-      .filter { it.length >= 2 }
+      .filter { it.length >= 2 && it !in extensions }
       .take(6)
     if (queryTokens.isEmpty()) return
 

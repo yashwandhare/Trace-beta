@@ -170,7 +170,7 @@
         
         <service
             android:name=".ocr.ScreenCaptureService"
-            android:foregroundServiceType="mediaProjection|microphone"
+            android:foregroundServiceType="mediaProjection"
             android:exported="false" />
     </application>
 
