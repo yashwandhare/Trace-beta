@@ -14,6 +14,7 @@ import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
 import android.util.DisplayMetrics
 import android.util.Log
@@ -21,7 +22,10 @@ import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 class ScreenCaptureService : Service() {
 
@@ -37,26 +41,44 @@ class ScreenCaptureService : Service() {
         const val EXTRA_RESULT_DATA = "RESULT_DATA"
         private const val CHANNEL_ID = "screen_capture_channel"
         private const val NOTIFICATION_ID = 1337
+        private const val FIRST_FRAME_TIMEOUT_MS = 2_000L
+        private const val FRAME_POLL_INTERVAL_MS = 50L
     }
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
         
-        // Listen for capture requests
+        // Listen for requests retained while MediaProjection consent is being granted.
         scope.launch {
-            ScreenExplainManager.captureRequests.collect {
-                latestBitmap?.let { bmp ->
+            ScreenExplainManager.captureRequest.filterNotNull().collect { request ->
+                val bitmap = withTimeoutOrNull(FIRST_FRAME_TIMEOUT_MS) {
+                    while (latestBitmap == null) delay(FRAME_POLL_INTERVAL_MS)
+                    latestBitmap?.copy(Bitmap.Config.ARGB_8888, false)
+                }
+                bitmap?.let { bmp ->
                     try {
                         val result = helper.recognizeText(bmp)
-                        ScreenExplainManager.emitResult(result.rawText)
+                        ScreenExplainManager.emitResult(
+                            ScreenExplainResult(
+                                question = request.question,
+                                ocrText = result.rawText,
+                                bitmap = bmp,
+                                speakResponse = request.speakResponse,
+                            )
+                        )
                     } catch (e: Exception) {
                         Log.e("ScreenCaptureService", "OCR failed", e)
-                        ScreenExplainManager.emitResult("Failed to read screen")
+                        ScreenExplainManager.emitResult(
+                            ScreenExplainResult(request.question, "", bmp, request.speakResponse)
+                        )
                     }
                 } ?: run {
-                    ScreenExplainManager.emitResult("No screen captured yet")
+                    ScreenExplainManager.emitResult(
+                        ScreenExplainResult(request.question, "", null, request.speakResponse)
+                    )
                 }
+                ScreenExplainManager.finishCapture(request)
             }
         }
     }
@@ -100,6 +122,15 @@ class ScreenCaptureService : Service() {
 
         val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         mediaProjection = projectionManager.getMediaProjection(resultCode, resultData)
+        mediaProjection?.registerCallback(
+            object : MediaProjection.Callback() {
+                override fun onStop() {
+                    Log.i("ScreenCaptureService", "MediaProjection stopped by the system or user")
+                    stopSelf()
+                }
+            },
+            Handler(mainLooper),
+        )
 
         imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
         
@@ -161,7 +192,9 @@ class ScreenCaptureService : Service() {
         mediaProjection?.stop()
         latestBitmap?.recycle()
         latestBitmap = null
+        helper.close()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
 }

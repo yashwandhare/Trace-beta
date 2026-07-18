@@ -109,6 +109,17 @@ offline, on the real device. File Fetch working via voice command. Merged to `ma
 
 ---
 
+## Pre-Phase 3 Stabilization
+
+**Dev C:**
+- [ ] Fix TTS reading typed text out loud and reduce first-speech latency
+- [ ] Fix Intent Router to handle typed inputs and correctly parse commands
+- [ ] Fix Screen Explain MediaProjection lifecycle and ensure Gemma receives the captured screen image
+
+**Gate:** Screen Explain works continuously without crashing, TTS responds fast and only when appropriate, File Fetch opens files successfully. Merged to `main`, confirmed working.
+
+---
+
 ## Phase 3 — Notes RAG Pipeline (highest technical risk — Dev A owns this fully)
 
 **Dev A:**

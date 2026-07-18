@@ -62,3 +62,10 @@ Format:
   - Dev B completed local UI implementations for the tap-to-toggle Mic button and local OCR testing.
 - Broken/open: None. Phase 1 and Phase 2 are complete, stable, and pushed to main. Ready for Phase 3.
 - Benchmark numbers: APK size grew to ~190MB due to ML Kit OCR and new modules.
+
+---
+
+## 2026-07-18 — Dev C — Pre-Phase 3 stabilization
+- Did: Fixed response TTS so only voice-originated prompts are spoken; reduced first-speech latency by emitting short streamed chunks. Routed typed commands through the same intent router as voice commands; expanded direct file-command phrasing and tokenized filename matching. Reworked Screen Explain to retain the request through MediaProjection consent, register the required MediaProjection callback before creating the virtual display, wait for the first frame, and pass the original question, OCR text, and captured image to Gemma.
+- Broken/open: Requires real-device validation for TTS timing, MediaProjection lifecycle, and the files that are visible to the app under Android scoped storage. The debug APK was built successfully.
+- Benchmark numbers: `:app:compileDebugKotlin` and `:app:assembleDebug` passed locally.

@@ -131,8 +131,20 @@ class FileFetcher(private val context: Context) {
         MediaStore.MediaColumns.SIZE,
       )
 
-    val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?"
-    val selectionArgs = arrayOf("%$query%")
+    // Voice transcription often differs from the filename's punctuation or extension (for
+    // example, "driver's license" versus "Drivers License.pdf"). Match meaningful words
+    // independently so file commands do not fall through to the chat model for that reason.
+    val queryTokens = query
+      .lowercase()
+      .split(Regex("[^\\p{L}\\p{N}]+"))
+      .filter { it.length >= 2 }
+      .take(6)
+    if (queryTokens.isEmpty()) return
+
+    val selection = queryTokens.joinToString(" AND ") {
+      "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?"
+    }
+    val selectionArgs = queryTokens.map { "%$it%" }.toTypedArray()
     val sortOrder = "${MediaStore.MediaColumns.DISPLAY_NAME} ASC LIMIT $limit"
 
     var cursor: Cursor? = null

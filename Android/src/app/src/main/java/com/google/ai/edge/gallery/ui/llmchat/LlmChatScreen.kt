@@ -53,6 +53,7 @@ import com.google.ai.edge.gallery.ui.common.chat.SendMessageTrigger
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import com.google.ai.edge.gallery.ui.theme.emptyStateContent
 import com.google.ai.edge.gallery.ui.theme.emptyStateTitle
+import com.google.ai.edge.gallery.voice.VoiceInputMarker
 import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.Message
 
@@ -247,10 +248,12 @@ fun ChatViewWrapper(
       val images: MutableList<Bitmap> = mutableListOf()
       val audioMessages: MutableList<ChatMessageAudioClip> = mutableListOf()
       var chatMessageText: ChatMessageText? = null
+      var speakResponse = false
       for (message in messages) {
         if (message is ChatMessageText) {
           chatMessageText = message
           text = message.content
+          speakResponse = speakResponse || message.data === VoiceInputMarker
         } else if (message is ChatMessageImage) {
           images.addAll(message.bitmaps)
         } else if (message is ChatMessageAudioClip) {
@@ -278,6 +281,7 @@ fun ChatViewWrapper(
             )
           },
           allowThinking = task.allowCapability(ModelCapability.LLM_THINKING, model),
+          speakResponse = speakResponse,
         )
 
         val activeSkills = getActiveSkills()

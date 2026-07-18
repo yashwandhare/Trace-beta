@@ -141,6 +141,7 @@ open class LlmChatViewModelBase(
     onDone: () -> Unit = {},
     onError: (String) -> Unit,
     allowThinking: Boolean = false,
+    speakResponse: Boolean = false,
   ) {
     val accelerator = model.getStringConfigValue(key = ConfigKeys.ACCELERATOR, defaultValue = "")
     viewModelScope.launch(Dispatchers.Default) {
@@ -250,15 +251,18 @@ open class LlmChatViewModelBase(
                     partialContent = partialResult,
                     latencyMs = latencyMs.toFloat(),
                   )
-                  ttsBuffer += partialResult
-                  val punctuationRegex = Regex("(?<=[.!?])\\s+|(?<=[.!?])$")
-                  val sentences = ttsBuffer.split(punctuationRegex)
-                  if (sentences.size > 1) {
-                    val sentenceToSpeak = ttsBuffer.substring(0, ttsBuffer.lastIndexOf(sentences.last()))
-                    if (sentenceToSpeak.isNotBlank()) {
-                      ttsManager?.speak(sentenceToSpeak.trim(), android.speech.tts.TextToSpeech.QUEUE_ADD)
+                  if (speakResponse) {
+                    ttsBuffer += partialResult
+                    val boundary = ttsBuffer.indexOfLast { it == '.' || it == '!' || it == '?' || it == '\n' }
+                    val enoughWords = ttsBuffer.trim().split(Regex("\\s+")).size >= TTS_CHUNK_WORD_COUNT
+                    if (boundary >= 0 || enoughWords) {
+                      val splitAt = if (boundary >= 0) boundary + 1 else ttsBuffer.lastIndexOf(' ').coerceAtLeast(0)
+                      val chunk = ttsBuffer.substring(0, splitAt).trim()
+                      if (chunk.isNotEmpty()) {
+                        ttsManager?.speak(chunk, android.speech.tts.TextToSpeech.QUEUE_ADD)
+                      }
+                      ttsBuffer = ttsBuffer.substring(splitAt).trimStart()
                     }
-                    ttsBuffer = sentences.last()
                   }
                 }
               }
@@ -270,7 +274,7 @@ open class LlmChatViewModelBase(
               }
 
               if (done) {
-                if (ttsBuffer.isNotBlank()) {
+                if (speakResponse && ttsBuffer.isNotBlank()) {
                   ttsManager?.speak(ttsBuffer.trim(), android.speech.tts.TextToSpeech.QUEUE_ADD)
                   ttsBuffer = ""
                 }
@@ -460,6 +464,8 @@ open class LlmChatViewModelBase(
     }
   }
 }
+
+private const val TTS_CHUNK_WORD_COUNT = 12
 
 @HiltViewModel
 class LlmChatViewModel

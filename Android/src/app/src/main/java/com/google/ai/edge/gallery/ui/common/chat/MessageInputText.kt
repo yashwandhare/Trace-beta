@@ -274,22 +274,29 @@ fun MessageInputText(
   }
 
   LaunchedEffect(Unit) {
-      com.google.ai.edge.gallery.ocr.ScreenExplainManager.ocrResults.collect { ocrText ->
-          if (ocrText.isNotBlank()) {
-              onSendMessage(
-                  listOf(com.google.ai.edge.gallery.ui.common.chat.ChatMessageText(
-                      content = "The screen contains this text:\n$ocrText\n\nPlease explain it.",
-                      side = com.google.ai.edge.gallery.ui.common.chat.ChatSide.USER
-                  ))
+      com.google.ai.edge.gallery.ocr.ScreenExplainManager.results.collect { result ->
+          val prompt = buildString {
+              append(result.question)
+              if (result.ocrText.isNotBlank()) {
+                  append("\n\nVisible screen text:\n")
+                  append(result.ocrText)
+              }
+          }
+          val messages = mutableListOf<ChatMessage>(
+              ChatMessageText(
+                  content = prompt,
+                  side = ChatSide.USER,
+                  data = if (result.speakResponse) com.google.ai.edge.gallery.voice.VoiceInputMarker else null,
               )
-          } else {
-              onSendMessage(
-                  listOf(com.google.ai.edge.gallery.ui.common.chat.ChatMessageText(
-                      content = "I couldn't read the screen.",
-                      side = com.google.ai.edge.gallery.ui.common.chat.ChatSide.USER
-                  ))
+          )
+          result.bitmap?.let { bitmap ->
+              messages += ChatMessageImage(
+                  bitmaps = listOf(bitmap),
+                  imageBitMaps = listOf(bitmap.asImageBitmap()),
+                  side = ChatSide.USER,
               )
           }
+          onSendMessage(messages)
       }
   }
 
@@ -803,11 +810,17 @@ fun MessageInputText(
                                       pickedImages = pickedImages,
                                       audioClips = pickedAudioClips,
                                       text = text.trim(),
-                                    )
+                                    ).map { message ->
+                                      if (message is ChatMessageText) {
+                                        ChatMessageText(message.content, message.side, data = com.google.ai.edge.gallery.voice.VoiceInputMarker)
+                                      } else message
+                                    }
                                   )
                                 } else if (intentResult.type == com.google.ai.edge.gallery.voice.IntentType.SCREEN_EXPLAIN) {
+                                  com.google.ai.edge.gallery.ocr.ScreenExplainManager.requestCapture(
+                                    com.google.ai.edge.gallery.ocr.ScreenExplainRequest(text, speakResponse = true)
+                                  )
                                   if (com.google.ai.edge.gallery.ocr.ScreenExplainManager.isServiceRunning) {
-                                      com.google.ai.edge.gallery.ocr.ScreenExplainManager.requestCapture()
                                   } else {
                                       val projectionManager = context.getSystemService(android.content.Context.MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
                                       mediaProjectionLauncher.launch(projectionManager.createScreenCaptureIntent())
@@ -855,14 +868,43 @@ fun MessageInputText(
                           !isResettingSession &&
                           (curMessage.isNotEmpty() || pickedAudioClips.isNotEmpty()),
                       onClick = {
-                        var message = curMessage.trim()
-                        onSendMessage(
-                          createMessagesToSend(
-                            pickedImages = pickedImages,
-                            audioClips = pickedAudioClips,
-                            text = message,
+                        val message = curMessage.trim()
+                        val intentResult = com.google.ai.edge.gallery.voice.IntentRouter(context).routeIntent(message)
+                        when (intentResult.type) {
+                          com.google.ai.edge.gallery.voice.IntentType.FILE_FETCH -> {
+                            val result = com.google.ai.edge.gallery.filefetch.DefaultIntentFileFetchHandler(context)
+                              .handleFindFile(intentResult.extractedFileName.orEmpty())
+                            if (result != null) {
+                              val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                setDataAndType(result.uri, context.contentResolver.getType(result.uri) ?: "*/*")
+                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                              }
+                              try {
+                                context.startActivity(viewIntent)
+                              } catch (_: Exception) {
+                                android.widget.Toast.makeText(context, "No app found to open this file", android.widget.Toast.LENGTH_SHORT).show()
+                              }
+                            } else {
+                              android.widget.Toast.makeText(context, "Could not find file: ${intentResult.extractedFileName}", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                          }
+                          com.google.ai.edge.gallery.voice.IntentType.SCREEN_EXPLAIN -> {
+                            com.google.ai.edge.gallery.ocr.ScreenExplainManager.requestCapture(
+                              com.google.ai.edge.gallery.ocr.ScreenExplainRequest(message, speakResponse = false)
+                            )
+                            if (!com.google.ai.edge.gallery.ocr.ScreenExplainManager.isServiceRunning) {
+                              val projectionManager = context.getSystemService(android.content.Context.MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
+                              mediaProjectionLauncher.launch(projectionManager.createScreenCaptureIntent())
+                            }
+                          }
+                          com.google.ai.edge.gallery.voice.IntentType.LLM_CHAT -> onSendMessage(
+                            createMessagesToSend(
+                              pickedImages = pickedImages,
+                              audioClips = pickedAudioClips,
+                              text = message,
+                            )
                           )
-                        )
+                        }
                         pickedImages = listOf()
                         pickedAudioClips = listOf()
                       },

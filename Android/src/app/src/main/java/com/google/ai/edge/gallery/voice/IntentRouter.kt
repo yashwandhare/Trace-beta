@@ -15,13 +15,16 @@ data class IntentResult(
 class IntentRouter(private val context: android.content.Context) {
     fun routeIntent(inputText: String): IntentResult {
         val lowerText = inputText.lowercase().trim()
-        
-        // More lenient rule-based router for File Fetch
-        val fileFetchRegex = Regex("(?i).*(?:find|fetch|open|get|look for|show|access|read)\\s+(?:file|my|the|a|an)\\s+(.+)")
+
+        // Keep this deliberately small and deterministic: direct file actions must not go to the
+        // model, whose answer cannot open a local file.
+        val fileFetchRegex = Regex(
+            "(?i).*(?:find|fetch|open|get|look\\s+for|show|access|read|pull\\s+up|bring\\s+up|locate)\\s+(?:(?:the|my|a|an)\\s+)?(?:file\\s+|document\\s+)?(.+)"
+        )
         val matchResult = fileFetchRegex.find(lowerText)
-        
-        if (matchResult != null) {
-            val fileName = matchResult.groupValues[1].trim()
+
+        if (matchResult != null && matchResult.groupValues[1].isNotBlank()) {
+            val fileName = matchResult.groupValues[1].trim().trimEnd('.', '!', '?')
             return IntentResult(
                 type = IntentType.FILE_FETCH,
                 query = inputText,

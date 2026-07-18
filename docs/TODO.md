@@ -104,6 +104,19 @@ no screen capture, no RAG yet.)
 
 ---
 
+## COMPLETED: Pre-Phase 3 Stabilization
+
+### Dev C
+- [x] Fix TTS: read aloud only for voice-originated prompts; reduce latency via chunked emission.
+- [x] Fix Intent Router: route typed commands through the router; improve regex and token matching.
+- [x] Fix Screen Explain: retain request through consent, wait for first frame, pass image to Gemma.
+
+### Merge checkpoint
+- [x] Dev C builds and tests combined `main`
+- [x] Gate met? → Pre-Phase 3 complete.
+
+---
+
 ## ACTIVE PHASE: Phase 3 — Notes RAG Pipeline
 (Highest-risk phase — full detail in `/ROADMAP.md`.)
 
