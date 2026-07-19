@@ -526,19 +526,3 @@ constructor(
   systemPromptRepository: SystemPromptRepository,
   userDataDataStore: DataStore<UserData>,
 ) : LlmChatViewModelBase(systemPromptRepository, userDataDataStore, null)
-
-@HiltViewModel
-class LlmAskImageViewModel
-@Inject
-constructor(
-  systemPromptRepository: SystemPromptRepository,
-  userDataDataStore: DataStore<UserData>,
-) : LlmChatViewModelBase(systemPromptRepository, userDataDataStore, null)
-
-@HiltViewModel
-class LlmAskAudioViewModel
-@Inject
-constructor(
-  systemPromptRepository: SystemPromptRepository,
-  userDataDataStore: DataStore<UserData>,
-  ) : LlmChatViewModelBase(systemPromptRepository, userDataDataStore, null)

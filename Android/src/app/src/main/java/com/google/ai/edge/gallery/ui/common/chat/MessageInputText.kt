@@ -143,7 +143,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.google.ai.edge.gallery.ui.common.textandvoiceinput.HoldToDictateViewModel
-import com.google.ai.edge.gallery.ui.voiceinput.PttOverlay
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 

@@ -57,11 +57,6 @@ import dagger.multibindings.IntoSet
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.remember
-import com.google.ai.edge.gallery.ui.voiceinput.PttOverlay
-import com.google.ai.edge.gallery.voice.VoiceManager
-import com.google.ai.edge.gallery.voice.IntentRouter
 import com.google.ai.edge.gallery.voice.IntentType
 import com.google.ai.edge.gallery.filefetch.FileFetcher
 import com.google.ai.edge.gallery.ui.common.chat.ChatMessageAudioClip
@@ -140,12 +135,6 @@ class LlmChatTask @Inject constructor() : CustomTask {
     val uiSystemPrompt by viewModel.uiSystemPrompt.collectAsState()
     val systemPromptUpdatedMessage = stringResource(R.string.system_prompt_updated)
 
-    val coroutineScope = rememberCoroutineScope()
-    val voiceViewModel: com.google.ai.edge.gallery.ui.common.textandvoiceinput.HoldToDictateViewModel = hiltViewModel()
-    val intentRouter = remember { IntentRouter(context) }
-
-    val voiceUiState by voiceViewModel.uiState.collectAsState()
-
     LlmChatScreen(
       modelManagerViewModel = myData.modelManagerViewModel,
       navigateUp = myData.onNavUp,
@@ -164,7 +153,7 @@ class LlmChatTask @Inject constructor() : CustomTask {
       showImagePicker = true,
       showAudioPicker = true,
       composableBelowMessageList = { model ->
-        // PttOverlay is now built into MessageInputText
+        // Voice input (PTT) lives inside MessageInputText; nothing to render here.
       },
       emptyStateComposable = {
         Box(modifier = Modifier.fillMaxSize()) {

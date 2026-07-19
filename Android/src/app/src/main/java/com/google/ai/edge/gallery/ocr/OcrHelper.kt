@@ -4,9 +4,7 @@
  * Wraps ML Kit TextRecognition for on-device Latin text extraction.
  * Offline — no network calls. Model is bundled with ML Kit.
  *
- * Used by:
- *   - OcrTestRunner (quality validation for Dev A's review)
- *   - Future: screen-explain pipeline once Dev A wires MediaProjection output
+ * Used by: DocumentExtractor, ScreenCaptureService, and VisionChatViewModel.
  *
  * Permissions: none required — reads bitmaps passed in-memory.
  */
