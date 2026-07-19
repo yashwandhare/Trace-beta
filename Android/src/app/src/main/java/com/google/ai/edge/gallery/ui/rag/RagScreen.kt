@@ -70,6 +70,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -84,6 +85,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.google.ai.edge.gallery.data.Task
+import com.google.ai.edge.gallery.data.ModelDownloadStatusType
 import com.google.ai.edge.gallery.rag.Citation
 import com.google.ai.edge.gallery.rag.KnowledgeScope
 import com.google.ai.edge.gallery.rag.QuizItem
@@ -116,6 +118,16 @@ fun RagScreen(
   val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
   val model = modelManagerUiState.selectedModel
   val accent = getTaskIconColor(task)
+
+  // Legacy tasks are rendered without the CustomTaskScreen wrapper that normally
+  // initializes the model — so the Notes screen must load Gemma itself, or every
+  // Quiz/Summarize inference silently no-ops on a null model instance.
+  val downloadStatus = modelManagerUiState.modelDownloadStatus[model.name]
+  LaunchedEffect(downloadStatus?.status, model.name) {
+    if (downloadStatus?.status == ModelDownloadStatusType.SUCCEEDED) {
+      modelManagerViewModel.initializeModel(context, task = task, model = model)
+    }
+  }
 
   var query by remember { mutableStateOf("") }
 

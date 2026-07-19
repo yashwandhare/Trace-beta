@@ -139,6 +139,20 @@ class RagViewModel @Inject constructor(
     _uiState.update { it.copy(generating = true, errorMessage = null, response = null) }
     viewModelScope.launch(Dispatchers.Default) {
       try {
+        // Wait for the resident model to finish initializing (up to 30s). Without
+        // this, a tap before init completes runs inference on a null instance and
+        // silently returns nothing.
+        var waited = 0
+        while (model.instance == null && waited < 30_000) {
+          kotlinx.coroutines.delay(200)
+          waited += 200
+        }
+        if (model.instance == null) {
+          _uiState.update {
+            it.copy(generating = false, errorMessage = "Model still loading — try again in a moment.")
+          }
+          return@launch
+        }
         val response =
           ragEngine.generate(
             mode = mode,
@@ -147,12 +161,16 @@ class RagViewModel @Inject constructor(
             scope = this,
             knowledgeScope = _uiState.value.knowledgeScope,
           )
+        // Treat an all-empty response (no quiz items, blank summary) as a failure
+        // rather than rendering an empty results area that looks like nothing happened.
+        val isEmpty = response == null ||
+          (response.items.isEmpty() && response.summary.isBlank())
         _uiState.update {
           it.copy(
             generating = false,
-            response = response,
+            response = if (isEmpty) null else response,
             errorMessage =
-              if (response == null) "Your notes don't seem to cover that topic." else null,
+              if (isEmpty) "Couldn't generate from your notes. Try a different topic or re-attach the note." else null,
           )
         }
       } catch (e: Exception) {
