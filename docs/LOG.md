@@ -114,3 +114,24 @@ Scoped stabilization pass on `dev-b` before Phase 3 (RAG) begins, so Dev C1 inhe
   - **READ_CALENDAR:** removed (only `java.util.Calendar` used, no provider access). Phase 4 Schedules may need to re-add it.
   - All changes need real-device validation (TTS timing, MediaProjection lifecycle, Vision recording, PTT).
 - Benchmark numbers: `:app:compileDebugKotlin` clean each workstream; `:app:assembleDebug` BUILD SUCCESSFUL. Debug APK ~198.99MB (essentially unchanged — heavy deps are ML Kit/LiteRT/native libs; the removed messaging/ktor/mcp deps were small/transitively-shared. The win is correctness + reduced permission/attack surface, not size).
+
+---
+
+## 2026-07-19 — Dev C1 — Phase 3 (RAG) — pipeline build
+Built the Phase 3 RAG backend + AI Chat wiring on `dev-a` (updated to the cleaned `main` first). Pure-Kotlin path per the Qdrant JNI no-go. Split: Dev C1 = pipeline (Dev A + Dev C tasks); Dev C2 = Quiz/Flashcard UI (Dev B task).
+- Did:
+  - **Data contracts** (`rag/RagContracts.kt`): `NoteChunk`, `EmbeddedChunk`, `RetrievalResult`, `QuizItem`, `RagResponse` — the stable shapes the Quiz UI consumes. Landed + pushed first so Dev C2 is unblocked.
+  - **Embedder** (`rag/TextEmbedderHelper.kt`): MediaPipe `TextEmbedder` over a bundled Universal Sentence Encoder model (`assets/universal_sentence_encoder.tflite`, ~5.9MB, 100-dim, L2-normalized). Fully offline. Added `com.google.mediapipe:tasks-text:0.10.29`.
+  - **Vector store** (`rag/VectorStore.kt`): thread-safe in-memory cosine-similarity index, top-k + min-score. Brute-force linear scan (fine for a user's own notes: tens–low-hundreds of chunks).
+  - **Chunker** (`rag/TextChunker.kt`): paragraph-packing with sentence-split fallback for oversized paragraphs.
+  - **Repository** (`rag/RagRepository.kt`): chunk→embed→index and query→retrieve; lazy embedder init, graceful degradation if the model can't load.
+  - **Generator** (`rag/RagGenerator.kt`): RAG intent detection (quiz/summary triggers, only fires when content is indexed), grounded prompt building, tolerant JSON→`QuizItem` parsing.
+  - **Engine** (`rag/RagEngine.kt`): end-to-end facade; reuses the resident Gemma model via a single silent inference (no session reset, no second model load), accumulating streamed deltas.
+  - **AI Chat wiring**: `LlmChatViewModelBase` gained `initRag` / `ingestAttachedFiles` / `tryHandleRagQuery` and a `ragResponse: StateFlow<RagResponse?>` (the Quiz UI integration point). Both text and voice send paths in `LlmChatScreen` ingest attachments and route quiz/summary queries through RAG before normal generation. `LlmChatTaskModule` calls `initRag`.
+- Broken/open:
+  - **Quiz UI (Dev C2):** not built yet — currently RAG results render as readable chat text as a fallback. The typed `viewModel.ragResponse` StateFlow (`RagResponse` → `List<QuizItem>` or `summary` + `sources`) is the shape to render. Ingestion + retrieval + generation all work without it.
+  - **Not device-validated:** compile + `assembleDebug` pass and the model asset is confirmed bundled in the APK (`assets/universal_sentence_encoder.tflite`), but retrieval quality, embedding latency, and quiz-JSON reliability from Gemma need a real-device pass (airplane mode).
+  - **Vision path:** RAG wired into AI Chat only; VisionChatViewModel (scanned notes) not yet ingesting into the same index — candidate follow-up.
+  - **Firebase Analytics + INTERNET perm** still present from the fork (Dev C2 deliberately left Analytics; degrades to null). Not a RAG concern but still open for a full offline-hardening pass.
+- Benchmark numbers: `:app:assembleDebug` BUILD SUCCESSFUL (1m22s). Debug APK ~219MB (grew ~20MB: MediaPipe tasks-text native libs + the 5.9MB model asset).
+
