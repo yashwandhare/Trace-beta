@@ -181,6 +181,25 @@ fun ChatViewWrapper(
         if (text.isNotEmpty()) {
           modelManagerViewModel.addTextInputHistory(text)
         }
+        // Phase 3 RAG: ingest any attached notes so later queries can be
+        // grounded in them.
+        if (files.isNotEmpty()) {
+          viewModel.ingestAttachedFiles(files)
+        }
+        val ragOrigin =
+          if (audioMessages.isNotEmpty() || chatMessageText?.data == InteractionOrigin.VOICE)
+            InteractionOrigin.VOICE else InteractionOrigin.TEXT
+        // If this is a "quiz me / summarize my notes" request, RAG handles it and
+        // we skip normal generation.
+        val handledByRag =
+          text.isNotEmpty() &&
+            viewModel.tryHandleRagQuery(
+              model = model,
+              input = text,
+              interactionOrigin = ragOrigin,
+              onDone = { onGenerateResponseDone(model) },
+            )
+        if (!handledByRag) {
         viewModel.generateResponse(
           model = model,
           input = text,
@@ -202,7 +221,7 @@ fun ChatViewWrapper(
           // Determine origin: audio clip messages = voice, OR if the text message is marked as STT.
           interactionOrigin = if (audioMessages.isNotEmpty() || chatMessageText?.data == InteractionOrigin.VOICE) InteractionOrigin.VOICE else InteractionOrigin.TEXT,
         )
-
+        } // end if (!handledByRag)
         val activeSkills = getActiveSkills()
         Log.d(
           TAG,
@@ -294,6 +313,20 @@ fun ChatViewWrapper(
         if (text.isNotEmpty()) {
           modelManagerViewModel.addTextInputHistory(text)
         }
+        // Phase 3 RAG: ingest attached notes, and let RAG handle quiz/summary
+        // voice queries grounded in them.
+        if (files.isNotEmpty()) {
+          viewModel.ingestAttachedFiles(files)
+        }
+        val handledByRag =
+          text.isNotEmpty() &&
+            viewModel.tryHandleRagQuery(
+              model = model,
+              input = text,
+              interactionOrigin = InteractionOrigin.VOICE,
+              onDone = { onGenerateResponseDone(model) },
+            )
+        if (!handledByRag) {
         viewModel.generateResponse(
           model = model,
           input = text,
@@ -312,6 +345,7 @@ fun ChatViewWrapper(
           allowThinking = task.allowCapability(ModelCapability.LLM_THINKING, model),
           interactionOrigin = InteractionOrigin.VOICE,
         )
+        } // end if (!handledByRag)
       }
     },
   )

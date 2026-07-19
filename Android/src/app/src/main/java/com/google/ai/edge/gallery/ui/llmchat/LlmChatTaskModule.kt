@@ -117,9 +117,10 @@ class LlmChatTask @Inject constructor() : CustomTask {
     val viewModel: LlmChatViewModel = hiltViewModel()
     
     val context = LocalContext.current
-    LaunchedEffect(task) { 
+    LaunchedEffect(task) {
       viewModel.loadSystemPrompt(task)
       viewModel.initTts(context)
+      viewModel.initRag(context)
     }
 
     // Register the SemanticFileMatcher classifier once the model warms up.
