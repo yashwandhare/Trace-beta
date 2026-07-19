@@ -48,11 +48,12 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.rounded.AddComment
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.rounded.MenuBook
 import androidx.compose.material.icons.rounded.Summarize
@@ -61,31 +62,33 @@ import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -95,8 +98,11 @@ import com.google.ai.edge.gallery.rag.Citation
 import com.google.ai.edge.gallery.rag.KnowledgeScope
 import com.google.ai.edge.gallery.rag.QuizItem
 import com.google.ai.edge.gallery.ui.common.Accordions
+import com.google.ai.edge.gallery.ui.common.chat.ChatHistorySideSheetContent
+import com.google.ai.edge.gallery.ui.common.chat.TraceChatInput
 import com.google.ai.edge.gallery.ui.common.getTaskIconColor
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
+import kotlinx.coroutines.launch
 
 /**
  * Standalone RAG module screen (Phase 3) — the "Notes" tile.
@@ -118,9 +124,12 @@ fun RagScreen(
 ) {
   val context = LocalContext.current
   val uiState by viewModel.uiState.collectAsState()
+  val historySessions by viewModel.historySessions.collectAsState()
   val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
   val model = modelManagerUiState.selectedModel
   val accent = getTaskIconColor(task)
+  val scope = rememberCoroutineScope()
+  val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
 
   // Legacy tasks are rendered without the CustomTaskScreen wrapper that normally
   // initializes the model — so the Notes screen must load Gemma itself, or every
@@ -163,64 +172,117 @@ fun RagScreen(
     )
   }
 
-  Scaffold(
-    topBar = {
-      TopAppBar(
-        title = { Text("Notes", fontWeight = FontWeight.SemiBold) },
-        navigationIcon = {
-          IconButton(onClick = onNavUp) {
-            Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
+  // History drawer, opening from the right (RTL trick, matching AI Chat's ChatView).
+  androidx.compose.runtime.CompositionLocalProvider(
+    androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Rtl
+  ) {
+    ModalNavigationDrawer(
+      drawerState = drawerState,
+      gesturesEnabled = drawerState.isOpen,
+      drawerContent = {
+        androidx.compose.runtime.CompositionLocalProvider(
+          androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr
+        ) {
+          ModalDrawerSheet {
+            ChatHistorySideSheetContent(
+              history = historySessions,
+              onHistoryItemClicked = { id -> viewModel.loadSession(id); scope.launch { drawerState.close() } },
+              onHistoryItemDeleted = { id -> viewModel.deleteSession(id) },
+              onHistoryItemsDeleteAll = { viewModel.clearAllSessions() },
+              onNewChatClicked = { viewModel.newConversation(); scope.launch { drawerState.close() } },
+              onDismissed = { scope.launch { drawerState.close() } },
+            )
           }
-        },
-        actions = {
-          KnowledgeScopeToggle(
-            scope = uiState.knowledgeScope,
-            accent = accent,
-            onToggle = {
-              viewModel.setKnowledgeScope(
-                if (uiState.knowledgeScope == KnowledgeScope.NOTES_ONLY) {
-                  KnowledgeScope.NOTES_AND_MODEL
-                } else {
-                  KnowledgeScope.NOTES_ONLY
+        }
+      },
+    ) {
+      androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr
+      ) {
+        Scaffold(
+          topBar = {
+            TopAppBar(
+              title = { Text("Notes", fontWeight = FontWeight.SemiBold) },
+              navigationIcon = {
+                IconButton(onClick = onNavUp) {
+                  Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
                 }
-              )
-            },
-          )
-        },
-        colors =
-          TopAppBarDefaults.topAppBarColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-            titleContentColor = MaterialTheme.colorScheme.onSurface,
-          ),
-      )
-    },
-    containerColor = MaterialTheme.colorScheme.surface,
-  ) { innerPadding ->
-    Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-      // ---- Conversation: fills from the top ----
-      Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-        if (uiState.messages.isEmpty() && !uiState.generating) {
-          EmptyState(hasNotes = uiState.indexedSources.isNotEmpty(), accent = accent)
-        } else {
-          Conversation(uiState = uiState, accent = accent)
+              },
+              actions = {
+                KnowledgeScopeToggle(
+                  scope = uiState.knowledgeScope,
+                  accent = accent,
+                  onToggle = {
+                    viewModel.setKnowledgeScope(
+                      if (uiState.knowledgeScope == KnowledgeScope.NOTES_ONLY) {
+                        KnowledgeScope.NOTES_AND_MODEL
+                      } else {
+                        KnowledgeScope.NOTES_ONLY
+                      }
+                    )
+                  },
+                )
+                IconButton(onClick = { viewModel.newConversation() }) {
+                  Icon(Icons.Rounded.AddComment, contentDescription = "New conversation")
+                }
+                IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                  Icon(Icons.Rounded.History, contentDescription = "History")
+                }
+              },
+              colors =
+                TopAppBarDefaults.topAppBarColors(
+                  containerColor = MaterialTheme.colorScheme.surface,
+                  titleContentColor = MaterialTheme.colorScheme.onSurface,
+                ),
+            )
+          },
+          containerColor = MaterialTheme.colorScheme.surface,
+        ) { innerPadding ->
+          Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+            // ---- Conversation: fills from the top ----
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+              if (uiState.messages.isEmpty() && !uiState.generating) {
+                EmptyState(hasNotes = uiState.indexedSources.isNotEmpty(), accent = accent)
+              } else {
+                Conversation(uiState = uiState, accent = accent)
+              }
+            }
+
+            // ---- Compact input bar (shared TraceChatInput) ----
+            TraceChatInput(
+              value = query,
+              onValueChange = { query = it },
+              onSendText = {
+                viewModel.ask(model, it)
+                query = ""
+              },
+              accent = accent,
+              placeholder = "Ask about your notes…",
+              enabled = uiState.indexedSources.isNotEmpty(),
+              inProgress = uiState.generating,
+              showAttach = true,
+              onAttach = ::launchPicker,
+              leadingContent = {
+                AttachedSourcesRow(
+                  uiState = uiState,
+                  accent = accent,
+                  onAttach = ::launchPicker,
+                  onRemoveSource = { viewModel.removeSource(it) },
+                )
+              },
+              quickActions = {
+                QuizSummarizeActions(
+                  enabled = uiState.indexedSources.isNotEmpty() && !uiState.generating,
+                  accent = accent,
+                  onQuiz = { viewModel.quiz(model, query); query = "" },
+                  onSummarize = { viewModel.summarize(model, query); query = "" },
+                  error = uiState.errorMessage,
+                )
+              },
+            )
+          }
         }
       }
-
-      // ---- Compact input bar ----
-      InputBar(
-        uiState = uiState,
-        query = query,
-        accent = accent,
-        onQueryChange = { query = it },
-        onAttach = ::launchPicker,
-        onRemoveSource = { viewModel.removeSource(it) },
-        onSend = {
-          viewModel.ask(model, query)
-          query = ""
-        },
-        onQuiz = { viewModel.quiz(model, query); query = "" },
-        onSummarize = { viewModel.summarize(model, query); query = "" },
-      )
     }
   }
 }
@@ -524,115 +586,64 @@ private fun KnowledgeScopeToggle(scope: KnowledgeScope, accent: Color, onToggle:
 }
 
 // ---------------------------------------------------------------------------
-// Bottom input bar
+// Input-bar slots (composed into the shared TraceChatInput)
 // ---------------------------------------------------------------------------
 
+/** Horizontally-scrolling row of attached-note chips + an attach affordance. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun InputBar(
+private fun AttachedSourcesRow(
   uiState: RagUiState,
-  query: String,
   accent: Color,
-  onQueryChange: (String) -> Unit,
   onAttach: () -> Unit,
   onRemoveSource: (String) -> Unit,
-  onSend: () -> Unit,
+) {
+  Row(
+    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    AssistChip(
+      onClick = onAttach,
+      enabled = !uiState.ingesting,
+      label = { Text(if (uiState.ingesting) "Indexing…" else "Attach") },
+      leadingIcon = {
+        if (uiState.ingesting) {
+          CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+        } else {
+          Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+        }
+      },
+      colors = AssistChipDefaults.assistChipColors(leadingIconContentColor = accent),
+    )
+    uiState.indexedSources.forEach { source ->
+      AssistChip(
+        onClick = { onRemoveSource(source) },
+        label = { Text(source, maxLines = 1) },
+        trailingIcon = {
+          Icon(Icons.Rounded.Close, contentDescription = "Remove $source", modifier = Modifier.size(16.dp))
+        },
+      )
+    }
+  }
+}
+
+/** Quiz / Summarize quick-action chips + any error text. */
+@Composable
+private fun QuizSummarizeActions(
+  enabled: Boolean,
+  accent: Color,
   onQuiz: () -> Unit,
   onSummarize: () -> Unit,
+  error: String?,
 ) {
-  val hasNotes = uiState.indexedSources.isNotEmpty()
-  val busy = uiState.generating
-  Surface(
-    color = MaterialTheme.colorScheme.surfaceContainerLow,
-    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-    tonalElevation = 3.dp,
-  ) {
-    Column(
-      modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp).navigationBarsPadding().imePadding(),
-      verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-      // Attached-note chips (+ attach affordance).
-      Row(
-        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-      ) {
-        AssistChip(
-          onClick = onAttach,
-          enabled = !uiState.ingesting,
-          label = { Text(if (uiState.ingesting) "Indexing…" else "Attach") },
-          leadingIcon = {
-            if (uiState.ingesting) {
-              CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-            } else {
-              Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-            }
-          },
-          colors = AssistChipDefaults.assistChipColors(leadingIconContentColor = accent),
-        )
-        uiState.indexedSources.forEach { source ->
-          AssistChip(
-            onClick = { onRemoveSource(source) },
-            label = { Text(source, maxLines = 1) },
-            trailingIcon = {
-              Icon(Icons.Rounded.Close, contentDescription = "Remove $source", modifier = Modifier.size(16.dp))
-            },
-          )
-        }
-      }
-
-      // Text field + send.
-      Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-      ) {
-        TextField(
-          value = query,
-          onValueChange = onQueryChange,
-          modifier = Modifier.weight(1f),
-          placeholder = { Text("Ask about your notes…") },
-          maxLines = 4,
-          shape = RoundedCornerShape(22.dp),
-          colors =
-            TextFieldDefaults.colors(
-              focusedIndicatorColor = Color.Transparent,
-              unfocusedIndicatorColor = Color.Transparent,
-              disabledIndicatorColor = Color.Transparent,
-              focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-              unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-            ),
-          keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-          keyboardActions = KeyboardActions(onSend = { if (hasNotes && !busy && query.isNotBlank()) onSend() }),
-        )
-        val canSend = hasNotes && !busy && query.isNotBlank()
-        IconButton(
-          onClick = onSend,
-          enabled = canSend,
-          modifier =
-            Modifier.size(48.dp).background(
-              if (canSend) accent else MaterialTheme.colorScheme.surfaceContainerHighest,
-              CircleShape,
-            ),
-        ) {
-          Icon(
-            Icons.AutoMirrored.Rounded.Send,
-            contentDescription = "Send",
-            tint = if (canSend) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(20.dp),
-          )
-        }
-      }
-
-      // Quiz / Summarize quick actions.
-      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        QuickAction(icon = Icons.Rounded.AutoAwesome, label = "Quiz me", enabled = hasNotes && !busy, accent = accent, onClick = onQuiz)
-        QuickAction(icon = Icons.Rounded.Summarize, label = "Summarize", enabled = hasNotes && !busy, accent = accent, onClick = onSummarize)
-      }
-
-      uiState.errorMessage?.let { error ->
-        Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-      }
+  Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      QuickAction(icon = Icons.Rounded.AutoAwesome, label = "Quiz me", enabled = enabled, accent = accent, onClick = onQuiz)
+      QuickAction(icon = Icons.Rounded.Summarize, label = "Summarize", enabled = enabled, accent = accent, onClick = onSummarize)
+    }
+    error?.let {
+      Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
     }
   }
 }
@@ -663,3 +674,4 @@ private fun QuickAction(
     }
   }
 }
+

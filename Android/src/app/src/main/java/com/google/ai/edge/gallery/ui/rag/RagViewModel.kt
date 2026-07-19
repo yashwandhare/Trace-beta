@@ -19,10 +19,16 @@ package com.google.ai.edge.gallery.ui.rag
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import androidx.datastore.core.DataStore
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.ai.edge.gallery.common.DocumentExtractor
+import com.google.ai.edge.gallery.data.BuiltInTaskId
 import com.google.ai.edge.gallery.data.Model
+import com.google.ai.edge.gallery.proto.ChatMessageProto
+import com.google.ai.edge.gallery.proto.ChatSessionProto
+import com.google.ai.edge.gallery.proto.ChatSideProto
+import com.google.ai.edge.gallery.proto.UserData
 import com.google.ai.edge.gallery.rag.Citation
 import com.google.ai.edge.gallery.rag.KnowledgeScope
 import com.google.ai.edge.gallery.rag.QuizItem
@@ -30,13 +36,20 @@ import com.google.ai.edge.gallery.rag.RagEngine
 import com.google.ai.edge.gallery.rag.RagMode
 import com.google.ai.edge.gallery.rag.RagResponse
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.util.UUID
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
 
 private const val TAG = "TraceRagViewModel"
 
@@ -83,10 +96,28 @@ data class RagUiState(
 @HiltViewModel
 class RagViewModel @Inject constructor(
   private val ragEngine: RagEngine,
+  private val userDataDataStore: DataStore<UserData>,
 ) : ViewModel() {
 
   private val _uiState = MutableStateFlow(RagUiState())
   val uiState = _uiState.asStateFlow()
+
+  /** Current conversation id — a new one starts each fresh Notes conversation. */
+  private var currentSessionId: String = UUID.randomUUID().toString()
+
+  /** Saved Notes conversations, newest first (task-scoped to the RAG module). */
+  val historySessions: StateFlow<List<ChatSessionProto>> =
+    userDataDataStore.data
+      .map { userData ->
+        userData.chatSessionsList
+          .filter { it.taskId == BuiltInTaskId.RAG }
+          .sortedByDescending { it.timestampMs }
+      }
+      .stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList(),
+      )
 
   init {
     refreshSources()
@@ -217,9 +248,78 @@ class RagViewModel @Inject constructor(
         _uiState.update {
           it.copy(generating = false, messages = it.messages + message, errorMessage = null)
         }
+        saveCurrentSession(model.name)
       } catch (e: Exception) {
         Log.e(TAG, "Generation failed", e)
         _uiState.update { it.copy(generating = false, errorMessage = "Generation failed. Try again.") }
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // History (persisted like AI Chat, task-scoped to the RAG module)
+  // -------------------------------------------------------------------------
+
+  /** Starts a fresh conversation, clearing the on-screen transcript. */
+  fun newConversation() {
+    currentSessionId = UUID.randomUUID().toString()
+    _uiState.update { it.copy(messages = emptyList(), errorMessage = null) }
+  }
+
+  /** Loads a saved conversation into the transcript (read-only until a note is attached). */
+  fun loadSession(sessionId: String) {
+    val session = historySessions.value.firstOrNull { it.sessionId == sessionId } ?: return
+    currentSessionId = sessionId
+    _uiState.update {
+      it.copy(messages = session.messagesList.mapNotNull { m -> m.toRagMessage() }, errorMessage = null)
+    }
+  }
+
+  fun deleteSession(sessionId: String) {
+    viewModelScope.launch(Dispatchers.IO) {
+      userDataDataStore.updateData { userData ->
+        val kept = userData.chatSessionsList.filter { it.sessionId != sessionId }
+        userData.toBuilder().clearChatSessions().addAllChatSessions(kept).build()
+      }
+    }
+    if (sessionId == currentSessionId) newConversation()
+  }
+
+  fun clearAllSessions() {
+    viewModelScope.launch(Dispatchers.IO) {
+      userDataDataStore.updateData { userData ->
+        val kept = userData.chatSessionsList.filter { it.taskId != BuiltInTaskId.RAG }
+        userData.toBuilder().clearChatSessions().addAllChatSessions(kept).build()
+      }
+    }
+    newConversation()
+  }
+
+  /** Upserts the current transcript as a session under the RAG task id. */
+  private fun saveCurrentSession(originalModel: String) {
+    val messages = _uiState.value.messages
+    if (messages.isEmpty()) return
+    val sessionId = currentSessionId
+    val title =
+      messages.filterIsInstance<RagMessage.UserMessage>().firstOrNull()?.text
+        ?.take(30)?.let { if (it.length == 30) "$it…" else it }
+        ?: "Notes session"
+    val protoMessages = messages.map { it.toProto() }
+    viewModelScope.launch(Dispatchers.IO) {
+      val sessionProto =
+        ChatSessionProto.newBuilder()
+          .setSessionId(sessionId)
+          .setTitle(title)
+          .setTimestampMs(System.currentTimeMillis())
+          .setOriginalModel(originalModel)
+          .setTaskId(BuiltInTaskId.RAG)
+          .addAllMessages(protoMessages)
+          .build()
+      userDataDataStore.updateData { userData ->
+        val sessions = userData.chatSessionsList.toMutableList()
+        sessions.removeAll { it.sessionId == sessionId }
+        sessions.add(sessionProto)
+        userData.toBuilder().clearChatSessions().addAllChatSessions(sessions).build()
       }
     }
   }
@@ -250,3 +350,111 @@ private fun RagResponse.toMessage(): RagMessage? =
     summary.isNotBlank() -> RagMessage.AssistantText(text = summary, citations = citations)
     else -> null
   }
+
+// ---------------------------------------------------------------------------
+// RagMessage <-> ChatMessageProto encoding
+//
+// The proto's message_type/content are free strings, so we reuse the existing
+// chat_history schema without changing it: quiz items and citations (which have
+// no native proto shape) are JSON-encoded into content under RAG_* markers.
+// ---------------------------------------------------------------------------
+
+private const val TYPE_USER = "RAG_USER"
+private const val TYPE_ASSISTANT = "RAG_ASSISTANT"
+private const val TYPE_QUIZ = "RAG_QUIZ"
+
+private fun RagMessage.toProto(): ChatMessageProto {
+  val builder = ChatMessageProto.newBuilder()
+  return when (this) {
+    is RagMessage.UserMessage ->
+      builder.setMessageType(TYPE_USER).setContent(text).setSide(ChatSideProto.CHAT_SIDE_USER).build()
+    is RagMessage.AssistantText ->
+      builder
+        .setMessageType(TYPE_ASSISTANT)
+        .setContent(encodeAssistantText(text, citations))
+        .setSide(ChatSideProto.CHAT_SIDE_MODEL)
+        .build()
+    is RagMessage.AssistantQuiz ->
+      builder
+        .setMessageType(TYPE_QUIZ)
+        .setContent(encodeQuiz(items, citations))
+        .setSide(ChatSideProto.CHAT_SIDE_MODEL)
+        .build()
+  }
+}
+
+private fun ChatMessageProto.toRagMessage(): RagMessage? =
+  when (messageType) {
+    TYPE_USER -> RagMessage.UserMessage(content)
+    TYPE_ASSISTANT -> {
+      val obj = runCatching { JSONObject(content) }.getOrNull()
+      if (obj != null) {
+        RagMessage.AssistantText(obj.optString("text"), decodeCitations(obj.optJSONArray("citations")))
+      } else {
+        RagMessage.AssistantText(content)
+      }
+    }
+    TYPE_QUIZ -> {
+      val obj = runCatching { JSONObject(content) }.getOrNull() ?: return null
+      RagMessage.AssistantQuiz(
+        items = decodeQuizItems(obj.optJSONArray("items")),
+        citations = decodeCitations(obj.optJSONArray("citations")),
+      )
+    }
+    else -> null
+  }
+
+private fun encodeAssistantText(text: String, citations: List<Citation>): String =
+  JSONObject().put("text", text).put("citations", encodeCitations(citations)).toString()
+
+private fun encodeQuiz(items: List<QuizItem>, citations: List<Citation>): String {
+  val itemsArr = JSONArray()
+  items.forEach { item ->
+    itemsArr.put(
+      JSONObject()
+        .put("question", item.question)
+        .put("answer", item.answer)
+        .put("options", JSONArray(item.options))
+        .put("sourceLabel", item.sourceLabel)
+    )
+  }
+  return JSONObject().put("items", itemsArr).put("citations", encodeCitations(citations)).toString()
+}
+
+private fun encodeCitations(citations: List<Citation>): JSONArray {
+  val arr = JSONArray()
+  citations.forEach { c ->
+    arr.put(
+      JSONObject()
+        .put("sourceLabel", c.sourceLabel)
+        .put("snippet", c.snippet)
+        .put("score", c.score.toDouble())
+    )
+  }
+  return arr
+}
+
+private fun decodeCitations(arr: JSONArray?): List<Citation> {
+  if (arr == null) return emptyList()
+  return (0 until arr.length()).mapNotNull { i ->
+    val o = arr.optJSONObject(i) ?: return@mapNotNull null
+    Citation(o.optString("sourceLabel"), o.optString("snippet"), o.optDouble("score", 0.0).toFloat())
+  }
+}
+
+private fun decodeQuizItems(arr: JSONArray?): List<QuizItem> {
+  if (arr == null) return emptyList()
+  return (0 until arr.length()).mapNotNull { i ->
+    val o = arr.optJSONObject(i) ?: return@mapNotNull null
+    val optsArr = o.optJSONArray("options")
+    val options =
+      if (optsArr == null) emptyList()
+      else (0 until optsArr.length()).map { optsArr.optString(it) }
+    QuizItem(
+      question = o.optString("question"),
+      answer = o.optString("answer"),
+      options = options,
+      sourceLabel = o.optString("sourceLabel"),
+    )
+  }
+}
