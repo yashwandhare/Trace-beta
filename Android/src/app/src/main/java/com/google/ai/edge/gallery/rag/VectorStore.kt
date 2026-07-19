@@ -93,10 +93,42 @@ class VectorStore {
   /**
    * Returns up to [topK] chunks in insertion order without similarity ranking —
    * for blank-topic requests ("quiz me" with no subject), where the grounding
-   * set is simply the user's notes.
+   * set is simply the user's notes. Scored 0f: these were not relevance-matched,
+   * so callers/citations don't imply a confidence they don't have.
    */
   fun sample(topK: Int = 5): List<RetrievalResult> =
-    entries.take(topK).map { RetrievalResult(chunk = it.chunk, score = 1f) }
+    entries.take(topK).map { RetrievalResult(chunk = it.chunk, score = 0f) }
+
+  /**
+   * Returns up to [maxChunks] chunks spread evenly across *every* indexed source,
+   * for topic-less summary/quiz requests. Unlike [sample] (the first-k in
+   * ingestion order, which only ever sees the front of the first document), this
+   * round-robins across sources and orders each source's picks by [NoteChunk.ordinal]
+   * so a long note contributes from throughout, not just its opening.
+   *
+   * Scored 0f — this is coverage, not relevance ranking.
+   */
+  fun coverageChunks(maxChunks: Int = 12): List<RetrievalResult> {
+    if (entries.isEmpty() || maxChunks <= 0) return emptyList()
+
+    // Group by source, each ordered by position within its document.
+    val bySource: Map<String, List<EmbeddedChunk>> =
+      entries.groupBy { it.chunk.sourceLabel }
+        .mapValues { (_, chunks) -> chunks.sortedBy { it.chunk.ordinal } }
+
+    // Round-robin: take one chunk from each source in turn until we hit the cap
+    // or exhaust every source. This spreads the budget across notes AND across
+    // each note's length.
+    val result = mutableListOf<EmbeddedChunk>()
+    val queues = bySource.values.map { it.toMutableList() }
+    while (result.size < maxChunks && queues.any { it.isNotEmpty() }) {
+      for (queue in queues) {
+        if (result.size >= maxChunks) break
+        if (queue.isNotEmpty()) result.add(queue.removeAt(0))
+      }
+    }
+    return result.map { RetrievalResult(chunk = it.chunk, score = 0f) }
+  }
 
   /** Clears the whole index. */
   fun clear() {

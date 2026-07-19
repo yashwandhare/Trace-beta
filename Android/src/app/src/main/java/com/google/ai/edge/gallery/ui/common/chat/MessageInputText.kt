@@ -743,7 +743,7 @@ fun MessageInputText(
                           },
                           onClick = {
                             showAddContentMenu = false
-                            pickFile.launch(arrayOf("application/pdf", "text/plain", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+                            pickFile.launch(arrayOf("application/pdf", "text/*", "text/markdown", "text/html", "application/octet-stream", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.presentationml.presentation"))
                           },
                         )
 

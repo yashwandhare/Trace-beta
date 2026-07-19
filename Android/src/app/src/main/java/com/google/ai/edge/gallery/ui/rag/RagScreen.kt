@@ -94,6 +94,7 @@ import com.google.ai.edge.gallery.data.Task
 import com.google.ai.edge.gallery.rag.Citation
 import com.google.ai.edge.gallery.rag.KnowledgeScope
 import com.google.ai.edge.gallery.rag.QuizItem
+import com.google.ai.edge.gallery.ui.common.Accordions
 import com.google.ai.edge.gallery.ui.common.getTaskIconColor
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 
@@ -150,6 +151,12 @@ fun RagScreen(
       arrayOf(
         "application/pdf",
         "text/*",
+        "text/markdown",
+        "text/html",
+        // Many devices report .md / .txt as octet-stream; include it so those
+        // files aren't greyed out in the picker. DocumentExtractor sniffs the
+        // extension and reads them as UTF-8 text.
+        "application/octet-stream",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "application/vnd.openxmlformats-officedocument.presentationml.presentation",
       )
@@ -307,25 +314,29 @@ private fun QuizTurn(message: RagMessage.AssistantQuiz, accent: Color) {
 
 @Composable
 private fun Citations(citations: List<Citation>, accent: Color) {
-  Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-    Text(
-      "Sources",
-      style = MaterialTheme.typography.labelMedium,
-      fontWeight = FontWeight.Bold,
-      color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    citations.forEach { citation ->
-      Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        shape = RoundedCornerShape(12.dp),
-      ) {
-        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-          Text(citation.sourceLabel, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelSmall, color = accent)
-          Text(
-            "“${citation.snippet}”",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-          )
+  var expanded by remember { mutableStateOf(false) }
+  Accordions(
+    title = "Sources (${citations.size})",
+    expanded = expanded,
+    onExpandedChange = { expanded = it },
+    boldTitle = true,
+    bgColor = Color.Transparent,
+    modifier = Modifier.fillMaxWidth(),
+  ) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
+      citations.forEach { citation ->
+        Card(
+          colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+          shape = RoundedCornerShape(12.dp),
+        ) {
+          Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(citation.sourceLabel, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelSmall, color = accent)
+            Text(
+              "“${citation.snippet}”",
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+          }
         }
       }
     }

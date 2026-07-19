@@ -64,11 +64,12 @@ class RagEngine(appContext: Context) {
     RagGenerator.detectMode(query, repository.hasIndexedContent)
 
   /**
-   * Runs the full retrieve → generate path for a query already known to be a RAG
-   * request of [mode]. Retrieves grounding chunks, prompts Gemma, and parses the
-   * result into a [RagResponse] carrying deterministic citations. Returns null
-   * if nothing relevant was retrieved (caller should tell the user their notes
-   * don't cover the topic).
+   * Runs the full retrieve → generate path for a request of [mode]. [topic] is
+   * the user's subject and may be blank: a blank topic (e.g. "Summarize" with no
+   * subject) grounds on a coverage spread across all notes, while a real topic
+   * runs relevance retrieval and only falls back to coverage if nothing matches.
+   * This is what keeps a summary/quiz from being built off an arbitrary prefix
+   * of the first document. Returns null if nothing at all is indexed.
    *
    * @param model the resident Gemma model instance.
    * @param scope coroutine scope for the inference (the caller's ViewModel scope).
@@ -76,21 +77,33 @@ class RagEngine(appContext: Context) {
    */
   suspend fun generate(
     mode: RagMode,
-    query: String,
+    topic: String,
     model: Model,
     scope: CoroutineScope,
     knowledgeScope: KnowledgeScope = KnowledgeScope.NOTES_ONLY,
   ): RagResponse? {
-    val retrieved = repository.retrieve(query, topK = 5).ifEmpty {
-      // Generic requests ("quiz me on my notes") often embed far from any one
-      // chunk. If nothing clears the similarity floor but notes ARE indexed,
-      // ground on a sample of the notes rather than failing.
-      repository.sampleChunks(topK = 5)
-    }
+    val hasTopic = topic.isNotBlank()
+    val retrieved =
+      if (hasTopic) {
+        // A named subject: relevance retrieval, falling back to whole-note
+        // coverage only if the query embeds too far from every chunk.
+        repository.retrieve(topic).ifEmpty { repository.coverageChunks() }
+      } else {
+        // No subject ("summarize my notes"): a generic query embeds far from any
+        // one chunk and would degrade to an arbitrary prefix, so ground on a
+        // spread across all notes directly.
+        repository.coverageChunks()
+      }
     if (retrieved.isEmpty()) {
-      Log.d(TAG, "No relevant chunks for query; skipping generation")
+      Log.d(TAG, "No chunks to ground on; skipping generation")
       return null
     }
+    // The query passed into the prompt: the topic when present, else a mode-
+    // appropriate instruction so the model still knows what to produce.
+    val query =
+      if (hasTopic) topic
+      else if (mode == RagMode.QUIZ) "Create a quiz covering the key points of these notes."
+      else "Summarize these notes."
     val sources = retrieved.map { it.chunk.sourceLabel }.distinct()
     val citations = RagGenerator.buildCitations(retrieved)
     val prompt = RagGenerator.buildPrompt(mode, query, retrieved, knowledgeScope)

@@ -151,7 +151,7 @@ class RagViewModel @Inject constructor(
     val trimmed = query.trim()
     if (trimmed.isEmpty()) return
     val mode = ragEngine.detectMode(trimmed) ?: RagMode.ASK
-    run(model, userLabel = trimmed, query = trimmed, mode = mode)
+    run(model, userLabel = trimmed, topic = trimmed, mode = mode)
   }
 
   /** Generates an interactive quiz, optionally focused on [topic]. */
@@ -160,7 +160,7 @@ class RagViewModel @Inject constructor(
     run(
       model,
       userLabel = if (t.isEmpty()) "Quiz me on my notes" else "Quiz me on: $t",
-      query = t.ifBlank { "quiz me on my notes" },
+      topic = t,
       mode = RagMode.QUIZ,
     )
   }
@@ -171,12 +171,12 @@ class RagViewModel @Inject constructor(
     run(
       model,
       userLabel = if (t.isEmpty()) "Summarize my notes" else "Summarize: $t",
-      query = t.ifBlank { "summarize my notes" },
+      topic = t,
       mode = RagMode.SUMMARY,
     )
   }
 
-  private fun run(model: Model, userLabel: String, query: String, mode: RagMode) {
+  private fun run(model: Model, userLabel: String, topic: String, mode: RagMode) {
     if (!ragEngine.hasIndexedContent) {
       _uiState.update { it.copy(errorMessage = "Attach a note or document first.") }
       return
@@ -199,7 +199,7 @@ class RagViewModel @Inject constructor(
         val response =
           ragEngine.generate(
             mode = mode,
-            query = query,
+            topic = topic,
             model = model,
             scope = this,
             knowledgeScope = _uiState.value.knowledgeScope,

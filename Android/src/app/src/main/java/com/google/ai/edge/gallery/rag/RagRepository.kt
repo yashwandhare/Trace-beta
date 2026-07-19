@@ -115,8 +115,8 @@ class RagRepository(private val appContext: Context) {
    */
   suspend fun retrieve(
     query: String,
-    topK: Int = 5,
-    minScore: Float = 0.25f,
+    topK: Int = 8,
+    minScore: Float = 0.15f,
   ): List<RetrievalResult> =
     withContext(Dispatchers.Default) {
       if (store.isEmpty()) return@withContext emptyList()
@@ -130,6 +130,13 @@ class RagRepository(private val appContext: Context) {
    * notes"): the first [topK] chunks in ingestion order, no similarity filter.
    */
   fun sampleChunks(topK: Int = 5): List<RetrievalResult> = store.sample(topK)
+
+  /**
+   * Grounding for topic-less summary/quiz requests: chunks spread evenly across
+   * every indexed source (see [VectorStore.coverageChunks]) so the whole of the
+   * notes is represented, not just the front of the first document.
+   */
+  fun coverageChunks(maxChunks: Int = 12): List<RetrievalResult> = store.coverageChunks(maxChunks)
 
   /** Drops a source from the index (e.g. when the user removes an attachment). */
   fun removeSource(sourceLabel: String) = store.removeSource(sourceLabel)
