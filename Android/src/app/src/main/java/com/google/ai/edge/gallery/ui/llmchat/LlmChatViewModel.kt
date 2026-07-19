@@ -64,6 +64,10 @@ open class LlmChatViewModelBase(
   private val systemPromptRepository: SystemPromptRepository? = null,
   userDataDataStore: DataStore<UserData>? = null,
   private val modelFeedbackRepository: Any? = null,
+  // App-wide shared RAG engine (Hilt singleton) so AI Chat and the RAG module
+  // query one index. When null (non-Hilt construction), initRag() creates a
+  // ViewModel-local engine which is closed in onCleared().
+  private val sharedRagEngine: com.google.ai.edge.gallery.rag.RagEngine? = null,
 ) : ChatViewModel(userDataDataStore) {
   private val _uiSystemPrompt = MutableStateFlow("")
   val uiSystemPrompt = _uiSystemPrompt.asStateFlow()
@@ -71,9 +75,9 @@ open class LlmChatViewModelBase(
   private var ttsManager: com.google.ai.edge.gallery.voice.TtsManager? = null
 
   // --- Phase 3 RAG ---
-  // Lazily-created engine that ingests attached notes and answers quiz/summary
-  // queries grounded in them. Null until initRag() runs (needs a Context).
-  private var ragEngine: com.google.ai.edge.gallery.rag.RagEngine? = null
+  private var localRagEngine: com.google.ai.edge.gallery.rag.RagEngine? = null
+  private val ragEngine: com.google.ai.edge.gallery.rag.RagEngine?
+    get() = sharedRagEngine ?: localRagEngine
 
   // The most recent quiz/summary the RAG engine produced. Dev C2's Quiz UI
   // observes this to render cards; null when there's no active RAG result.
@@ -82,8 +86,8 @@ open class LlmChatViewModelBase(
   val ragResponse = _ragResponse.asStateFlow()
 
   fun initRag(context: android.content.Context) {
-      if (ragEngine == null) {
-          ragEngine = com.google.ai.edge.gallery.rag.RagEngine(context.applicationContext)
+      if (sharedRagEngine == null && localRagEngine == null) {
+          localRagEngine = com.google.ai.edge.gallery.rag.RagEngine(context.applicationContext)
       }
   }
 
@@ -103,9 +107,10 @@ open class LlmChatViewModelBase(
       ttsManager?.shutdown()
       // Clear the SemanticFileMatcher classifier so it doesn't hold a stale model reference.
       com.google.ai.edge.gallery.filefetch.SemanticFileMatcher.clearClassifier()
-      // Release the RAG embedder.
-      val engine = ragEngine
-      ragEngine = null
+      // Release a ViewModel-local RAG embedder. The shared singleton engine is
+      // app-scoped and must NOT be closed here.
+      val engine = localRagEngine
+      localRagEngine = null
       if (engine != null) {
           viewModelScope.launch { engine.close() }
       }
@@ -286,15 +291,21 @@ open class LlmChatViewModelBase(
   ): String {
     val header = if (response.sources.isNotEmpty())
       "From your notes (${response.sources.joinToString(", ")}):\n\n" else ""
-    return if (response.isQuiz) {
-      header + response.items.mapIndexed { i, item ->
+    val body = if (response.isQuiz) {
+      response.items.mapIndexed { i, item ->
         val opts = if (item.isMultipleChoice)
           "\n" + item.options.joinToString("\n") { "   - $it" } else ""
         "${i + 1}. ${item.question}$opts\n   Answer: ${item.answer}"
       }.joinToString("\n\n")
     } else {
-      header + response.summary
+      response.summary
     }
+    val citations = if (response.citations.isNotEmpty()) {
+      "\n\n---\nSources:\n" + response.citations.joinToString("\n") {
+        "• [${it.sourceLabel}] \"${it.snippet}\""
+      }
+    } else ""
+    return header + body + citations
   }
 
   fun generateResponse(
@@ -650,4 +661,5 @@ class LlmChatViewModel
 constructor(
   systemPromptRepository: SystemPromptRepository,
   userDataDataStore: DataStore<UserData>,
-) : LlmChatViewModelBase(systemPromptRepository, userDataDataStore, null)
+  ragEngine: com.google.ai.edge.gallery.rag.RagEngine,
+) : LlmChatViewModelBase(systemPromptRepository, userDataDataStore, null, ragEngine)

@@ -66,28 +66,37 @@ class RagEngine(appContext: Context) {
   /**
    * Runs the full retrieve → generate path for a query already known to be a RAG
    * request of [mode]. Retrieves grounding chunks, prompts Gemma, and parses the
-   * result into a [RagResponse]. Returns null if nothing relevant was retrieved
-   * (caller should tell the user their notes don't cover the topic).
+   * result into a [RagResponse] carrying deterministic citations. Returns null
+   * if nothing relevant was retrieved (caller should tell the user their notes
+   * don't cover the topic).
    *
    * @param model the resident Gemma model instance.
    * @param scope coroutine scope for the inference (the caller's ViewModel scope).
+   * @param knowledgeScope notes-only vs notes+model-knowledge (user toggle).
    */
   suspend fun generate(
     mode: RagMode,
     query: String,
     model: Model,
     scope: CoroutineScope,
+    knowledgeScope: KnowledgeScope = KnowledgeScope.NOTES_ONLY,
   ): RagResponse? {
-    val retrieved = repository.retrieve(query, topK = 5)
+    val retrieved = repository.retrieve(query, topK = 5).ifEmpty {
+      // Generic requests ("quiz me on my notes") often embed far from any one
+      // chunk. If nothing clears the similarity floor but notes ARE indexed,
+      // ground on a sample of the notes rather than failing.
+      repository.sampleChunks(topK = 5)
+    }
     if (retrieved.isEmpty()) {
       Log.d(TAG, "No relevant chunks for query; skipping generation")
       return null
     }
     val sources = retrieved.map { it.chunk.sourceLabel }.distinct()
-    val prompt = RagGenerator.buildPrompt(mode, query, retrieved)
+    val citations = RagGenerator.buildCitations(retrieved)
+    val prompt = RagGenerator.buildPrompt(mode, query, retrieved, knowledgeScope)
 
     val raw = runSilentInference(model, prompt, scope)
-    Log.d(TAG, "RAG generation (${mode.name}) produced ${raw.length} chars from ${retrieved.size} chunks")
+    Log.d(TAG, "RAG generation (${mode.name}, ${knowledgeScope.name}) produced ${raw.length} chars from ${retrieved.size} chunks")
 
     return when (mode) {
       RagMode.QUIZ -> {
@@ -95,12 +104,12 @@ class RagEngine(appContext: Context) {
         if (items.isEmpty()) {
           // Model didn't return parseable quiz JSON — fall back to surfacing the
           // raw text as a summary so the user still gets grounded output.
-          RagResponse(summary = raw.trim(), sources = sources)
+          RagResponse(summary = raw.trim(), sources = sources, citations = citations)
         } else {
-          RagResponse(items = items, sources = sources)
+          RagResponse(items = items, sources = sources, citations = citations)
         }
       }
-      RagMode.SUMMARY -> RagResponse(summary = raw.trim(), sources = sources)
+      RagMode.SUMMARY -> RagResponse(summary = raw.trim(), sources = sources, citations = citations)
     }
   }
 

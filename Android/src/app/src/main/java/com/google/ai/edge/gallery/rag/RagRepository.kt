@@ -125,6 +125,12 @@ class RagRepository(private val appContext: Context) {
       store.query(queryVector, topK = topK, minScore = minScore)
     }
 
+  /**
+   * Fallback grounding when the query names no specific topic ("quiz me on my
+   * notes"): the first [topK] chunks in ingestion order, no similarity filter.
+   */
+  fun sampleChunks(topK: Int = 5): List<RetrievalResult> = store.sample(topK)
+
   /** Drops a source from the index (e.g. when the user removes an attachment). */
   fun removeSource(sourceLabel: String) = store.removeSource(sourceLabel)
 

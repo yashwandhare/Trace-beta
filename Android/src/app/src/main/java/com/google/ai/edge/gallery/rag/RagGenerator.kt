@@ -29,6 +29,17 @@ enum class RagMode {
 }
 
 /**
+ * Knowledge scope for generation — the user-facing toggle. NOTES_ONLY keeps
+ * Gemma strictly grounded in retrieved passages; NOTES_AND_MODEL lets it blend
+ * its own internal knowledge with the notes (clearly separated in the prompt).
+ * Both are fully offline.
+ */
+enum class KnowledgeScope {
+  NOTES_ONLY,
+  NOTES_AND_MODEL,
+}
+
+/**
  * Stateless helpers for the retrieval-augmented generation step: deciding
  * whether a query is a RAG request, building the grounded prompt from retrieved
  * chunks, and parsing Gemma's response into typed [QuizItem]s.
@@ -72,17 +83,29 @@ object RagGenerator {
     }
   }
 
-  /** Builds the grounded prompt sent to Gemma for the given [mode]. */
-  fun buildPrompt(mode: RagMode, query: String, retrieved: List<RetrievalResult>): String {
+  /** Builds the grounded prompt sent to Gemma for the given [mode] and [scope]. */
+  fun buildPrompt(
+    mode: RagMode,
+    query: String,
+    retrieved: List<RetrievalResult>,
+    scope: KnowledgeScope = KnowledgeScope.NOTES_ONLY,
+  ): String {
     val context =
       retrieved.joinToString("\n\n") { "[${it.chunk.sourceLabel}] ${it.chunk.text}" }
+
+    val groundingRule = when (scope) {
+      KnowledgeScope.NOTES_ONLY ->
+        "Use ONLY the provided notes — do not add outside facts."
+      KnowledgeScope.NOTES_AND_MODEL ->
+        "Ground your answer in the provided notes first; you may add your own knowledge " +
+          "to clarify or extend, but never contradict the notes."
+    }
 
     return when (mode) {
       RagMode.QUIZ ->
         """
-        You are generating a quiz strictly from the user's own notes below. Use ONLY the
-        provided notes — do not add outside facts. If the notes don't support a question,
-        don't invent one.
+        You are generating a quiz from the user's own notes below. $groundingRule
+        If the notes don't support a question, don't invent one.
 
         Return ONLY a JSON array of 3-5 questions, no prose before or after. Each item:
         {"question": "...", "answer": "...", "options": ["...","...","...","..."]}
@@ -98,8 +121,8 @@ object RagGenerator {
 
       RagMode.SUMMARY ->
         """
-        Summarize the user's own notes below in 3-5 concise sentences. Use ONLY the
-        provided notes — do not add outside information. Plain text, no markdown.
+        Summarize the user's own notes below in 3-5 concise sentences. $groundingRule
+        Plain text, no markdown.
 
         NOTES:
         $context
@@ -109,6 +132,21 @@ object RagGenerator {
         """.trimIndent()
     }
   }
+
+  /**
+   * Builds display citations from retrieval results — deterministic, straight
+   * from what was actually fed to the model.
+   */
+  fun buildCitations(retrieved: List<RetrievalResult>, maxSnippetChars: Int = 200): List<Citation> =
+    retrieved.map { r ->
+      Citation(
+        sourceLabel = r.chunk.sourceLabel,
+        snippet =
+          if (r.chunk.text.length <= maxSnippetChars) r.chunk.text
+          else r.chunk.text.take(maxSnippetChars).trimEnd() + "…",
+        score = r.score,
+      )
+    }
 
   /**
    * Parses Gemma's raw [response] for a quiz into [QuizItem]s. Tolerant of the

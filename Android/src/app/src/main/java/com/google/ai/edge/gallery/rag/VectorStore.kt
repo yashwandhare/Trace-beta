@@ -90,6 +90,14 @@ class VectorStore {
   /** Distinct source labels currently indexed — used for "based on: <notes>" UI. */
   fun sources(): List<String> = entries.map { it.chunk.sourceLabel }.distinct()
 
+  /**
+   * Returns up to [topK] chunks in insertion order without similarity ranking —
+   * for blank-topic requests ("quiz me" with no subject), where the grounding
+   * set is simply the user's notes.
+   */
+  fun sample(topK: Int = 5): List<RetrievalResult> =
+    entries.take(topK).map { RetrievalResult(chunk = it.chunk, score = 1f) }
+
   /** Clears the whole index. */
   fun clear() {
     entries.clear()
