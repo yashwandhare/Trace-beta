@@ -234,9 +234,8 @@ fun MessageInputText(
       if (withinLimit) {
         pickedImages + bitmaps
       } else {
-        if (isAiCore) {
-          scope.launch(Dispatchers.Main) { onImageLimitExceeded() }
-        }
+        // Notify for all model types — non-AiCore models were silently truncating with no feedback.
+        scope.launch(Dispatchers.Main) { onImageLimitExceeded() }
         (pickedImages + bitmaps).take(maxAllowedForThisMessage)
       }
   }
@@ -346,6 +345,33 @@ fun MessageInputText(
     }
   }
 
+  // Single intent router instance (was reconstructed on every tap at both dispatch sites).
+  val intentRouter = remember(context) { com.google.ai.edge.gallery.voice.IntentRouter(context) }
+
+  // Unified dispatch for both the send button and the voice (PTT) path. Previously these were
+  // two divergent copies: the voice path tagged LLM_CHAT text with InteractionOrigin.VOICE and
+  // used speakResponse=true, the send path did neither — so typed messages never carried origin.
+  val dispatchIntent: (String, Boolean, List<ChatMessage>) -> Unit = dispatch@{ text, isVoice, messages ->
+    val intentResult = intentRouter.routeIntent(text)
+    when (intentResult.type) {
+      com.google.ai.edge.gallery.voice.IntentType.FILE_FETCH -> {
+        performFileFetch(intentResult.extractedFileName.orEmpty())
+      }
+      com.google.ai.edge.gallery.voice.IntentType.SCREEN_EXPLAIN -> {
+        com.google.ai.edge.gallery.ocr.ScreenExplainManager.requestCapture(
+          com.google.ai.edge.gallery.ocr.ScreenExplainRequest(text, speakResponse = isVoice)
+        )
+        if (!com.google.ai.edge.gallery.ocr.ScreenExplainManager.isServiceRunning) {
+          val projectionManager = context.getSystemService(android.content.Context.MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
+          mediaProjectionLauncher.launch(projectionManager.createScreenCaptureIntent())
+        }
+      }
+      com.google.ai.edge.gallery.voice.IntentType.LLM_CHAT -> {
+        if (isVoice) onSendVoiceMessage(messages) else onSendMessage(messages)
+      }
+    }
+  }
+
   LaunchedEffect(Unit) {
       com.google.ai.edge.gallery.ocr.ScreenExplainManager.results.collect { result ->
           val prompt = buildString {
@@ -405,34 +431,18 @@ fun MessageInputText(
     voiceViewModel.startSpeechRecognition(
       onDone = { text ->
         if (text.isNotBlank()) {
-          val intentRouter = com.google.ai.edge.gallery.voice.IntentRouter(context)
-          val intentResult = intentRouter.routeIntent(text)
-
-          if (intentResult.type == com.google.ai.edge.gallery.voice.IntentType.LLM_CHAT) {
-            // Use onSendVoiceMessage so TTS is triggered in the ViewModel.
-            onSendVoiceMessage(
-              createMessagesToSend(
-                pickedImages = pickedImages,
-                pickedFiles = pickedFiles,
-                audioClips = pickedAudioClips,
-                text = text.trim(),
-              ).map { message ->
-                if (message is ChatMessageText) {
-                  ChatMessageText(message.content, message.side, data = com.google.ai.edge.gallery.voice.InteractionOrigin.VOICE)
-                } else message
-              }
-            )
-          } else if (intentResult.type == com.google.ai.edge.gallery.voice.IntentType.SCREEN_EXPLAIN) {
-            com.google.ai.edge.gallery.ocr.ScreenExplainManager.requestCapture(
-              com.google.ai.edge.gallery.ocr.ScreenExplainRequest(text, speakResponse = true)
-            )
-            if (!com.google.ai.edge.gallery.ocr.ScreenExplainManager.isServiceRunning) {
-                val projectionManager = context.getSystemService(android.content.Context.MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
-                mediaProjectionLauncher.launch(projectionManager.createScreenCaptureIntent())
-            }
-          } else if (intentResult.type == com.google.ai.edge.gallery.voice.IntentType.FILE_FETCH) {
-            performFileFetch(intentResult.extractedFileName ?: "")
+          val voiceMessages = createMessagesToSend(
+            pickedImages = pickedImages,
+            pickedFiles = pickedFiles,
+            audioClips = pickedAudioClips,
+            text = text.trim(),
+          ).map { message ->
+            // Tag text as VOICE so the ViewModel speaks the response via TTS.
+            if (message is ChatMessageText) {
+              ChatMessageText(message.content, message.side, data = com.google.ai.edge.gallery.voice.InteractionOrigin.VOICE)
+            } else message
           }
+          dispatchIntent(text, true, voiceMessages)
           updatePickedImages(listOf())
           pickedFiles = listOf()
           pickedAudioClips = listOf()
@@ -1039,29 +1049,16 @@ fun MessageInputText(
                           (curMessage.isNotEmpty() || pickedAudioClips.isNotEmpty() || pickedFiles.isNotEmpty()),
                       onClick = {
                         val message = curMessage.trim()
-                        val intentResult = com.google.ai.edge.gallery.voice.IntentRouter(context).routeIntent(message)
-                        when (intentResult.type) {
-                          com.google.ai.edge.gallery.voice.IntentType.FILE_FETCH -> {
-                            performFileFetch(intentResult.extractedFileName.orEmpty())
-                          }
-                          com.google.ai.edge.gallery.voice.IntentType.SCREEN_EXPLAIN -> {
-                            com.google.ai.edge.gallery.ocr.ScreenExplainManager.requestCapture(
-                              com.google.ai.edge.gallery.ocr.ScreenExplainRequest(message, speakResponse = false)
-                            )
-                            if (!com.google.ai.edge.gallery.ocr.ScreenExplainManager.isServiceRunning) {
-                              val projectionManager = context.getSystemService(android.content.Context.MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
-                              mediaProjectionLauncher.launch(projectionManager.createScreenCaptureIntent())
-                            }
-                          }
-                          com.google.ai.edge.gallery.voice.IntentType.LLM_CHAT -> onSendMessage(
-                            createMessagesToSend(
-                              pickedImages = pickedImages,
-                              pickedFiles = pickedFiles,
-                              audioClips = pickedAudioClips,
-                              text = message,
-                            )
+                        dispatchIntent(
+                          message,
+                          false,
+                          createMessagesToSend(
+                            pickedImages = pickedImages,
+                            pickedFiles = pickedFiles,
+                            audioClips = pickedAudioClips,
+                            text = message,
                           )
-                        }
+                        )
                         updatePickedImages(listOf())
                         pickedFiles = listOf()
                         pickedAudioClips = listOf()

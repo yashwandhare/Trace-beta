@@ -232,7 +232,12 @@ fun ChatViewWrapper(
   onBenchmarkScreenClicked: (Model) -> Unit = {},
 ) {
   val context = LocalContext.current
-  val task = modelManagerViewModel.getTaskById(id = taskId)!!
+  // Defensive: an unknown taskId previously crashed here with a null-assertion (!!).
+  val task = modelManagerViewModel.getTaskById(id = taskId)
+  if (task == null) {
+    Log.e("LlmChatScreen", "No task found for id=$taskId — cannot render chat screen")
+    return
+  }
   val scope = rememberCoroutineScope()
 
   ChatView(

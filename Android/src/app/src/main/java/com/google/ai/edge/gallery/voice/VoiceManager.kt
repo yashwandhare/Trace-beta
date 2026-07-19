@@ -33,20 +33,31 @@ class VoiceManager {
         .coerceAtLeast(4096) // guard against -1 / 0 error codes
 
     // Reuse the same AudioRecord across sessions to avoid per-press setup cost.
-    @delegate:SuppressLint("MissingPermission")
-    private val audioRecord: AudioRecord by lazy {
-        AudioRecord(
+    // Recreated on demand if it was released (see [obtainAudioRecord]).
+    private var audioRecord: AudioRecord? = null
+
+    @SuppressLint("MissingPermission")
+    private fun obtainAudioRecord(): AudioRecord {
+        val existing = audioRecord
+        if (existing != null && existing.state == AudioRecord.STATE_INITIALIZED) {
+            return existing
+        }
+        // Either first use or the previous instance was released — build a fresh one.
+        val created = AudioRecord(
             MediaRecorder.AudioSource.MIC,
             SAMPLE_RATE,
             CHANNEL_CONFIG,
             AUDIO_FORMAT,
             minBufferSize,
         )
+        audioRecord = created
+        return created
     }
 
     private val audioStream = ByteArrayOutputStream(minBufferSize * 8)
     private var recordingJob: Job? = null
 
+    @Volatile
     var isRecording = false
         private set
 
@@ -58,20 +69,21 @@ class VoiceManager {
         val buffer = ByteArray(minBufferSize)
 
         recordingJob = coroutineScope.launch(Dispatchers.IO) {
-            // If the recorder is in a bad state (e.g. released externally) re-initialize.
-            if (audioRecord.state != AudioRecord.STATE_INITIALIZED) {
+            val recorder = obtainAudioRecord()
+            // If the recorder is in a bad state (e.g. released externally) bail out.
+            if (recorder.state != AudioRecord.STATE_INITIALIZED) {
                 Log.e(TAG, "AudioRecord not initialized — cannot start recording.")
                 isRecording = false
                 return@launch
             }
 
-            audioRecord.startRecording()
+            recorder.startRecording()
             val startMs = System.currentTimeMillis()
 
             while (isRecording &&
-                audioRecord.recordingState == AudioRecord.RECORDSTATE_RECORDING
+                recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING
             ) {
-                val bytesRead = audioRecord.read(buffer, 0, buffer.size)
+                val bytesRead = recorder.read(buffer, 0, buffer.size)
                 if (bytesRead > 0) {
                     audioStream.write(buffer, 0, bytesRead)
 
@@ -119,23 +131,27 @@ class VoiceManager {
         isRecording = false
         recordingJob?.cancel()
         recordingJob = null
+        val recorder = audioRecord
         try {
-            if (audioRecord.state == AudioRecord.STATE_INITIALIZED) {
-                if (audioRecord.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
-                    audioRecord.stop()
+            if (recorder != null && recorder.state == AudioRecord.STATE_INITIALIZED) {
+                if (recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                    recorder.stop()
                 }
-                audioRecord.release()
+                recorder.release()
             }
         } catch (e: Exception) {
             Log.w(TAG, "Exception during release: ${e.message}")
+        } finally {
+            audioRecord = null
         }
         Log.d(TAG, "VoiceManager released.")
     }
 
     private fun stopRecordingInternal() {
         try {
-            if (audioRecord.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
-                audioRecord.stop()
+            val recorder = audioRecord
+            if (recorder != null && recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                recorder.stop()
             }
         } catch (e: Exception) {
             Log.w(TAG, "stopRecordingInternal: ${e.message}")

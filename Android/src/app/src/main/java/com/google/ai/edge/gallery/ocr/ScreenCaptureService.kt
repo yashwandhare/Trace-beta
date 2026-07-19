@@ -66,6 +66,15 @@ class ScreenCaptureService : Service() {
     private var imageReader: ImageReader? = null
 
     /**
+     * Dedicated background thread for ImageReader frame callbacks. Without this, a null
+     * Handler makes the callback run on the thread that created the ImageReader — here the
+     * main thread (startCapture is invoked from onStartCommand) — so the ~5 MB
+     * createBitmap/copyPixelsFromBuffer would execute on the UI thread and jank it.
+     */
+    private var imageReaderThread: android.os.HandlerThread? = null
+    private var imageReaderHandler: Handler? = null
+
+    /**
      * Properly-scoped coroutine scope — cancelled in [onDestroy] so no
      * coroutine can outlive the service.
      */
@@ -181,6 +190,11 @@ class ScreenCaptureService : Service() {
         imageReader?.close()
         imageReader = null
 
+        // Stop the frame-callback thread so it doesn't outlive the service.
+        imageReaderHandler = null
+        imageReaderThread?.quitSafely()
+        imageReaderThread = null
+
         // MediaProjection.stop() triggers onStop() callback; safe to call in destroy.
         mediaProjection?.stop()
         mediaProjection = null
@@ -209,7 +223,13 @@ class ScreenCaptureService : Service() {
     private suspend fun processRequest(request: ScreenExplainRequest) {
         val bitmap = withTimeoutOrNull(FIRST_FRAME_TIMEOUT_MS) {
             while (latestBitmap == null) delay(FRAME_POLL_INTERVAL_MS)
-            latestBitmap?.copy(Bitmap.Config.ARGB_8888, false)
+            // Guard against onDestroy recycling latestBitmap between the null-check and copy.
+            try {
+                latestBitmap?.takeIf { !it.isRecycled }?.copy(Bitmap.Config.ARGB_8888, false)
+            } catch (e: Exception) {
+                Log.w(TAG, "processRequest: frame copy failed (likely recycled during teardown)", e)
+                null
+            }
         }
 
         if (bitmap != null) {
@@ -273,6 +293,12 @@ class ScreenCaptureService : Service() {
 
         imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
 
+        // Background thread for frame callbacks so bitmap decode never touches the UI thread.
+        val readerThread = android.os.HandlerThread("TraceImageReader").also { it.start() }
+        val readerHandler = Handler(readerThread.looper)
+        imageReaderThread = readerThread
+        imageReaderHandler = readerHandler
+
         var lastDecodeTime = 0L
 
         imageReader?.setOnImageAvailableListener({ reader ->
@@ -319,7 +345,7 @@ class ScreenCaptureService : Service() {
             } finally {
                 image.close()
             }
-        }, null)
+        }, readerHandler)
 
         virtualDisplay = mediaProjection?.createVirtualDisplay(
             "TraceScreenCapture",

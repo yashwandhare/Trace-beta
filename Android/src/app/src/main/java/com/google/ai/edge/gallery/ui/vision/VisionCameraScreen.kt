@@ -68,7 +68,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -88,6 +87,10 @@ import kotlinx.coroutines.launch
 import java.util.concurrent.Executors
 
 private const val TAG = "VisionCameraScreen"
+
+// Cap on retained video frames: at 1 frame/3s this is ~5 min of recording, past which
+// keyframe selection would drop most anyway. Prevents unbounded full-size bitmap growth.
+private const val MAX_RECORDED_FRAMES = 100
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -144,10 +147,23 @@ fun VisionCameraScreen(
     // Video mode state
     var isVideoMode by remember { mutableStateOf(false) }
     var isRecording by remember { mutableStateOf(false) }
-    val recordedFrames = remember { mutableStateListOf<Bitmap>() }
-    var lastFrameTimeMs by remember { mutableStateOf(0L) }
+    // Frames are written from the analyzer (background executor), so the backing list must be
+    // thread-safe and must NOT be Compose state. The UI reads [frameCount] (updated on the main
+    // thread) instead. Capped so a long recording can't accumulate unbounded full-size bitmaps.
+    val recordedFrames = remember { java.util.Collections.synchronizedList(mutableListOf<Bitmap>()) }
+    var frameCount by remember { mutableIntStateOf(0) }
+    val lastFrameTimeMs = remember { java.util.concurrent.atomic.AtomicLong(0L) }
     var recordingStartMs by remember { mutableStateOf(0L) }
     var recordingElapsedSecs by remember { mutableStateOf(0) }
+    val mainHandler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
+
+    fun clearRecordedFrames() {
+      synchronized(recordedFrames) {
+        recordedFrames.forEach { if (!it.isRecycled) it.recycle() }
+        recordedFrames.clear()
+      }
+      frameCount = 0
+    }
 
     // Tick the recording timer every second
     LaunchedEffect(isRecording) {
@@ -171,8 +187,8 @@ fun VisionCameraScreen(
           analysis.setAnalyzer(executor) { image ->
             if (isRecording) {
               val currentTime = System.currentTimeMillis()
-              // 1 frame every 3 seconds — keeps frame count low for longer videos
-              if (currentTime - lastFrameTimeMs > 3000) {
+              // 1 frame every 3 seconds — keeps frame count low for longer videos.
+              if (currentTime - lastFrameTimeMs.get() > 3000 && recordedFrames.size < MAX_RECORDED_FRAMES) {
                 try {
                   val bitmap = image.toBitmap()
                   val rotation = image.imageInfo.rotationDegrees
@@ -181,7 +197,10 @@ fun VisionCameraScreen(
                     bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true
                   )
                   recordedFrames.add(rotatedBitmap)
-                  lastFrameTimeMs = currentTime
+                  lastFrameTimeMs.set(currentTime)
+                  // Publish count to Compose state on the main thread only.
+                  val newCount = recordedFrames.size
+                  mainHandler.post { frameCount = newCount }
                 } catch (e: Exception) {
                   Log.e(TAG, "Error capturing frame for video", e)
                 }
@@ -222,6 +241,11 @@ fun VisionCameraScreen(
       onDispose {
         cameraProvider?.unbindAll()
         if (!executor.isShutdown) executor.shutdown()
+        // Free any frames that were never handed off to processing.
+        synchronized(recordedFrames) {
+          recordedFrames.forEach { if (!it.isRecycled) it.recycle() }
+          recordedFrames.clear()
+        }
       }
     }
 
@@ -285,7 +309,7 @@ fun VisionCameraScreen(
                 style = MaterialTheme.typography.labelLarge,
               )
               Text(
-                text = "${recordedFrames.size} frames",
+                text = "$frameCount frames",
                 color = Color.White.copy(alpha = 0.7f),
                 style = MaterialTheme.typography.labelSmall,
               )
@@ -345,7 +369,7 @@ fun VisionCameraScreen(
                   if (isRecording) {
                     // Stop recording → switch to chat
                     isRecording = false
-                    val framesToProcess = recordedFrames.toList()
+                    val framesToProcess = synchronized(recordedFrames) { recordedFrames.toList() }
                     if (framesToProcess.isNotEmpty()) {
                       capturedBitmap = framesToProcess.first()
                       val selectedModel = modelManagerViewModel.uiState.value.selectedModel
@@ -356,13 +380,16 @@ fun VisionCameraScreen(
                           input = "",
                         )
                       }
-                      recordedFrames.clear()
                     }
+                    // Drop our tracking references without recycling — the frames are now
+                    // owned by processVideoFrames / capturedBitmap.
+                    synchronized(recordedFrames) { recordedFrames.clear() }
+                    frameCount = 0
                   } else {
-                    // Start recording
-                    recordedFrames.clear()
+                    // Start recording — recycle any leftover frames from a prior take.
+                    clearRecordedFrames()
                     recordingStartMs = System.currentTimeMillis()
-                    lastFrameTimeMs = System.currentTimeMillis()
+                    lastFrameTimeMs.set(System.currentTimeMillis())
                     isRecording = true
                   }
                 } else {
