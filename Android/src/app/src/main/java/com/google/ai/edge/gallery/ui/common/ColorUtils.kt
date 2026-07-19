@@ -27,6 +27,7 @@ fun getTaskBgColor(task: Task): Color {
   val colorIndex: Int = when (task.id) {
     "llm_chat" -> 2 // Blue
     "vision" -> 0 // Red
+    "rag" -> 3 // Yellow
     else -> (task.index.coerceAtLeast(0)) % MaterialTheme.customColors.taskBgColors.size
   }
   return MaterialTheme.customColors.taskBgColors[colorIndex]
@@ -37,6 +38,7 @@ fun getTaskBgGradientColors(task: Task): List<Color> {
   val colorIndex: Int = when (task.id) {
     "llm_chat" -> 2 // Blue
     "vision" -> 0 // Red
+    "rag" -> 3 // Yellow
     else -> (task.index.coerceAtLeast(0)) % MaterialTheme.customColors.taskBgColors.size
   }
   return MaterialTheme.customColors.taskBgGradientColors[colorIndex]
@@ -47,6 +49,7 @@ fun getTaskIconColor(task: Task): Color {
   val colorIndex: Int = when (task.id) {
     "llm_chat" -> 2 // Blue
     "vision" -> 0 // Red
+    "rag" -> 3 // Yellow
     else -> (task.index.coerceAtLeast(0)) % MaterialTheme.customColors.taskIconColors.size
   }
   return MaterialTheme.customColors.taskIconColors[colorIndex]
