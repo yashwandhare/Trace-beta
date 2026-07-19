@@ -120,29 +120,29 @@ no screen capture, no RAG yet.)
 
 ---
 
-## ACTIVE PHASE: Phase 3 — RAG (Module)
-(Highest-risk phase — full detail in `/ROADMAP.md`.)
+## COMPLETED: Phase 3 — RAG (Module)
+(Highest-risk phase — full detail in `/ROADMAP.md`. Pure-Kotlin fallback shipped; Qdrant/JNI was a No-Go, see `/DECISIONS.md`.)
 
 ### Dev A
-- [ ] Qdrant Edge Rust crate for Android + JNI bridge
-- [ ] Embedding pipeline
-- [ ] End-to-end: explicitly attached notes → OCR → embed → index → query → quiz/summary
-- [ ] Go/no-go call on JNI integration — log outcome in `/DECISIONS.md`
+- [x] ~~Qdrant Edge Rust crate for Android + JNI bridge~~ → No-Go; replaced with pure-Kotlin in-memory cosine store (`rag/VectorStore.kt`)
+- [x] Embedding pipeline (MediaPipe TextEmbedder + bundled Universal Sentence Encoder, `rag/TextEmbedderHelper.kt`)
+- [x] End-to-end: explicitly attached notes → OCR → embed → index → query → quiz/summary/ask
+- [x] Go/no-go call on JNI integration — logged in `/DECISIONS.md`
 
 ### Dev B
-- [ ] Quiz/Flashcard UI in Compose, built against a `QuizItem` mock data shape Dev A defines first
+- [x] Quiz/Flashcard UI in Compose against the `QuizItem` contract — Anki-style interactive MCQ + flashcards in the conversational Notes screen
 - [x] Report OCR findings from Phase 2
 
-### Dev C (If joining)
-- [ ] Coordinate with Dev A and Dev B on RAG pipeline data structures
-- [ ] Assist with JNI bridge or embedding pipeline depending on Rust/Kotlin expertise
+### Dev C
+- [x] Coordinate with Dev A and Dev B on RAG pipeline data structures (`rag/RagContracts.kt`)
+- [x] Built the embedding pipeline, engine, standalone module, citations, knowledge toggle, and conversational ASK follow-up
 
 ### Merge checkpoint — same pattern as above.
 
 ---
 
-## LATER: Phase 4 — Memory & Schedules (Modules)
-(Do not start until Phase 3 gate is confirmed met. Full detail in `/ROADMAP.md`.)
+## NEXT PHASE: Phase 4 — Memory & Schedules (Modules)
+(Phase 3 gate met. Full detail in `/ROADMAP.md`.)
 
 ### Dev A
 - [ ] Build the Memory structured data store (local database/preferences) for user-authored and system-authored entries

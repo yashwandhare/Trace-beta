@@ -110,6 +110,7 @@ class RagEngine(appContext: Context) {
         }
       }
       RagMode.SUMMARY -> RagResponse(summary = raw.trim(), sources = sources, citations = citations)
+      RagMode.ASK -> RagResponse(summary = raw.trim(), sources = sources, citations = citations)
     }
   }
 

@@ -26,6 +26,8 @@ private const val TAG = "TraceRagGenerator"
 enum class RagMode {
   QUIZ,
   SUMMARY,
+  /** A free-form question answered conversationally, grounded in the notes. */
+  ASK,
 }
 
 /**
@@ -129,6 +131,19 @@ object RagGenerator {
 
         User request: $query
         Summary:
+        """.trimIndent()
+
+      RagMode.ASK ->
+        """
+        Answer the user's question using their own notes below. $groundingRule
+        Reply conversationally in a few sentences. Plain text, no markdown.
+        If the notes don't cover it, say so plainly instead of guessing.
+
+        NOTES:
+        $context
+
+        Question: $query
+        Answer:
         """.trimIndent()
     }
   }

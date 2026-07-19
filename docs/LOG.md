@@ -151,3 +151,16 @@ Product calls confirmed with owner (see new `/DECISIONS.md` entry): web search R
 - Benchmark numbers: `:app:assembleDebug` BUILD SUCCESSFUL. Debug APK ~221MB at project root.
 
 
+## 2026-07-19 — Dev C1 — Phase 3 (RAG) — conversational Notes redesign + phase wrap-up
+Pulled Dev C2's Phase 3 UI (chat-shaped Notes screen, interactive quiz cards, model-init fix on the legacy nav path) from `main` into `dev-a`. Device testing showed the layout needed work; this pass reworks it and closes Phase 3.
+- Did:
+  - **Conversational Notes screen** (`ui/rag/RagScreen.kt`): rebuilt as a real chat. The transcript (user turns, assistant answers, quiz turns) fills the scroll area and auto-scrolls to newest; a compact bottom bar holds attached-note chips, a rounded text field, a send button, and small Quiz me / Summarize quick-action chips. The knowledge-scope toggle moved to the top bar (icon + label) to reclaim the vertical space the old two-full-width-buttons + topic field + filter-chip-rows block wasted.
+  - **Grounded follow-up (ASK mode):** added `RagMode.ASK` (`rag/RagGenerator.kt` + `rag/RagEngine.kt`) — a conversational, notes-grounded answer. Sending from the text field routes through `RagGenerator.detectMode` first (so "quiz me" / "summarize my notes" still trigger those modes) and otherwise answers as a follow-up. A summary now flows into an ongoing back-and-forth instead of dead-ending.
+  - **Conversation state** (`ui/rag/RagViewModel.kt`): replaced the single `response: RagResponse?` with a `messages: List<RagMessage>` transcript (`UserMessage` / `AssistantText` / `AssistantQuiz`). Three entry points — `ask` / `quiz` / `summarize` — share the model-ready wait + empty-response guard C2 added.
+  - **Anki-style MCQ:** quiz cards are now interactive multiple-choice — tap an option to lock it, the correct option turns green and a wrong pick turns red (auto-graded, no manual Got it/Missed). Flashcard items (no options) keep tap-to-flip. Citations render per assistant turn.
+  - **Phase 3 marked complete** in `/TODO.md`; Phase 4 (Memory & Schedules) promoted to the next phase.
+- Broken/open:
+  - Real-device validation of this redesign still pending (retrieval quality, quiz-JSON reliability, follow-up coherence across turns, airplane-mode pass).
+  - Vision→RAG ingestion (scanned notes into the shared index) still a candidate follow-up.
+  - Firebase Analytics + INTERNET perm still present from the fork — deferred offline-hardening pass.
+- Benchmark numbers: `:app:assembleDebug` BUILD SUCCESSFUL in 26s. Debug APK ~220MB, copied to project root.

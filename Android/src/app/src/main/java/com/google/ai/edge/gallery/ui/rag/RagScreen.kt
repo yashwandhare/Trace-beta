@@ -18,14 +18,15 @@ package com.google.ai.edge.gallery.ui.rag
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -36,37 +37,40 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.rounded.MenuBook
 import androidx.compose.material.icons.rounded.Summarize
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -81,29 +85,27 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.google.ai.edge.gallery.data.Task
 import com.google.ai.edge.gallery.data.ModelDownloadStatusType
+import com.google.ai.edge.gallery.data.Task
 import com.google.ai.edge.gallery.rag.Citation
 import com.google.ai.edge.gallery.rag.KnowledgeScope
 import com.google.ai.edge.gallery.rag.QuizItem
-import com.google.ai.edge.gallery.rag.RagMode
-import com.google.ai.edge.gallery.rag.RagResponse
 import com.google.ai.edge.gallery.ui.common.getTaskIconColor
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 
 /**
  * Standalone RAG module screen (Phase 3) — the "Notes" tile.
  *
- * Layout is chat-shaped: generated results (quiz cards / summary / citations)
- * fill the scrollable area from the top, and all the controls (attached notes,
- * knowledge-scope toggle, topic field, Quiz/Summarize actions) are docked in a
- * bottom bar — the same input-at-the-bottom model as AI Chat.
- *
- * The interactive Quiz/Flashcard experience (tap-to-reveal, self-graded
- * right/wrong) lives in [QuizCard] and consumes [RagResponse.items].
+ * Chat-shaped: the conversation (summaries, follow-up answers, interactive quiz
+ * cards) fills the scroll area from the top, and a compact bar docks at the
+ * bottom with the attached-note chips, a text field, a send button, and Quiz /
+ * Summarize quick actions. Sending a message runs a grounded follow-up so a
+ * summary can flow into a real back-and-forth. The knowledge-scope toggle lives
+ * in the top bar to keep the input area small.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -143,6 +145,17 @@ fun RagScreen(
       }
     }
 
+  fun launchPicker() {
+    filePicker.launch(
+      arrayOf(
+        "application/pdf",
+        "text/*",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      )
+    )
+  }
+
   Scaffold(
     topBar = {
       TopAppBar(
@@ -151,6 +164,21 @@ fun RagScreen(
           IconButton(onClick = onNavUp) {
             Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
           }
+        },
+        actions = {
+          KnowledgeScopeToggle(
+            scope = uiState.knowledgeScope,
+            accent = accent,
+            onToggle = {
+              viewModel.setKnowledgeScope(
+                if (uiState.knowledgeScope == KnowledgeScope.NOTES_ONLY) {
+                  KnowledgeScope.NOTES_AND_MODEL
+                } else {
+                  KnowledgeScope.NOTES_ONLY
+                }
+              )
+            },
+          )
         },
         colors =
           TopAppBarDefaults.topAppBarColors(
@@ -162,237 +190,253 @@ fun RagScreen(
     containerColor = MaterialTheme.colorScheme.surface,
   ) { innerPadding ->
     Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-      // ---- Results area: fills from the top ----
+      // ---- Conversation: fills from the top ----
       Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-        val response = uiState.response
-        when {
-          uiState.generating -> GeneratingState(accent = accent)
-          response != null -> ResultsList(response = response, accent = accent)
-          else -> EmptyState(hasNotes = uiState.indexedSources.isNotEmpty(), accent = accent)
+        if (uiState.messages.isEmpty() && !uiState.generating) {
+          EmptyState(hasNotes = uiState.indexedSources.isNotEmpty(), accent = accent)
+        } else {
+          Conversation(uiState = uiState, accent = accent)
         }
       }
 
-      // ---- Controls: docked at the bottom ----
-      BottomControls(
+      // ---- Compact input bar ----
+      InputBar(
         uiState = uiState,
         query = query,
         accent = accent,
         onQueryChange = { query = it },
-        onAttach = {
-          filePicker.launch(
-            arrayOf(
-              "application/pdf",
-              "text/*",
-              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-              "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            )
-          )
-        },
+        onAttach = ::launchPicker,
         onRemoveSource = { viewModel.removeSource(it) },
-        onScopeChange = { viewModel.setKnowledgeScope(it) },
-        onQuiz = { viewModel.generate(model, query, RagMode.QUIZ) },
-        onSummarize = { viewModel.generate(model, query, RagMode.SUMMARY) },
+        onSend = {
+          viewModel.ask(model, query)
+          query = ""
+        },
+        onQuiz = { viewModel.quiz(model, query); query = "" },
+        onSummarize = { viewModel.summarize(model, query); query = "" },
       )
     }
   }
 }
 
 // ---------------------------------------------------------------------------
-// Results area
+// Conversation
 // ---------------------------------------------------------------------------
 
 @Composable
-private fun ResultsList(response: RagResponse, accent: Color) {
+private fun Conversation(uiState: RagUiState, accent: Color) {
   val listState = rememberLazyListState()
+  val itemCount = uiState.messages.size + if (uiState.generating) 1 else 0
+
+  // Keep the newest turn in view as the conversation grows.
+  LaunchedEffect(itemCount) {
+    if (itemCount > 0) listState.animateScrollToItem(itemCount - 1)
+  }
+
   LazyColumn(
     state = listState,
     modifier = Modifier.fillMaxSize(),
-    contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+    contentPadding = PaddingValues(16.dp),
     verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
-    if (response.isQuiz) {
-      item {
-        SectionHeader(icon = Icons.Rounded.AutoAwesome, label = "Quiz from your notes", accent = accent)
-      }
-      items(response.items) { quizItem -> QuizCard(item = quizItem, accent = accent) }
-    } else if (response.summary.isNotBlank()) {
-      item {
-        SectionHeader(icon = Icons.Rounded.Summarize, label = "Summary", accent = accent)
-      }
-      item {
-        Card(
-          colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-          shape = RoundedCornerShape(18.dp),
-        ) {
-          Text(
-            response.summary,
-            modifier = Modifier.padding(16.dp),
-            style = MaterialTheme.typography.bodyMedium,
-          )
-        }
+    items(uiState.messages) { message ->
+      when (message) {
+        is RagMessage.UserMessage -> UserBubble(message.text)
+        is RagMessage.AssistantText -> AssistantTextBubble(message, accent)
+        is RagMessage.AssistantQuiz -> QuizTurn(message, accent)
       }
     }
-
-    if (response.citations.isNotEmpty()) {
-      item { Spacer(Modifier.height(4.dp)) }
-      item {
-        Text(
-          "Sources",
-          style = MaterialTheme.typography.labelLarge,
-          fontWeight = FontWeight.Bold,
-          color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-      }
-      items(response.citations) { citation -> CitationCard(citation = citation) }
+    if (uiState.generating) {
+      item { GeneratingBubble(accent) }
     }
   }
 }
 
 @Composable
-private fun SectionHeader(
-  icon: androidx.compose.ui.graphics.vector.ImageVector,
-  label: String,
-  accent: Color,
-) {
-  Row(verticalAlignment = Alignment.CenterVertically) {
-    Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(20.dp))
-    Spacer(Modifier.width(8.dp))
-    Text(label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+private fun UserBubble(text: String) {
+  Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+    Surface(
+      color = MaterialTheme.colorScheme.primary,
+      shape = RoundedCornerShape(18.dp, 18.dp, 4.dp, 18.dp),
+      modifier = Modifier.widthIn(max = 300.dp),
+    ) {
+      Text(
+        text,
+        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onPrimary,
+      )
+    }
+  }
+}
+
+@Composable
+private fun AssistantTextBubble(message: RagMessage.AssistantText, accent: Color) {
+  Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
+    Column(modifier = Modifier.widthIn(max = 320.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+      Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(18.dp, 18.dp, 18.dp, 4.dp),
+      ) {
+        Text(
+          message.text,
+          modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+          style = MaterialTheme.typography.bodyMedium,
+        )
+      }
+      if (message.citations.isNotEmpty()) {
+        Citations(message.citations, accent)
+      }
+    }
+  }
+}
+
+@Composable
+private fun QuizTurn(message: RagMessage.AssistantQuiz, accent: Color) {
+  Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+      Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = accent, modifier = Modifier.size(18.dp))
+      Spacer(Modifier.width(8.dp))
+      Text("Quiz from your notes", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+    }
+    message.items.forEach { item -> QuizCard(item = item, accent = accent) }
+    if (message.citations.isNotEmpty()) {
+      Citations(message.citations, accent)
+    }
+  }
+}
+
+@Composable
+private fun Citations(citations: List<Citation>, accent: Color) {
+  Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Text(
+      "Sources",
+      style = MaterialTheme.typography.labelMedium,
+      fontWeight = FontWeight.Bold,
+      color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    citations.forEach { citation ->
+      Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        shape = RoundedCornerShape(12.dp),
+      ) {
+        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+          Text(citation.sourceLabel, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelSmall, color = accent)
+          Text(
+            "“${citation.snippet}”",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+        }
+      }
+    }
   }
 }
 
 /**
- * Interactive quiz/flashcard card (Dev C2).
+ * Interactive quiz card.
  *
- * Starts with only the question shown. Tapping reveals the answer (and, for
- * multiple-choice items, marks the correct option). Once revealed, the user
- * self-grades with Got it / Missed — a lightweight right/wrong signal that
- * colors the card edge so progress through a set is visible at a glance.
+ * Multiple-choice items are Anki-style: the user taps an option, which locks the
+ * answer and reveals grading — the correct option turns green, and a wrong pick
+ * turns red. Flashcard items (no options) simply flip question → answer on tap.
  */
 @Composable
 private fun QuizCard(item: QuizItem, accent: Color) {
-  var revealed by remember(item) { mutableStateOf(false) }
-  var graded by remember(item) { mutableStateOf<Boolean?>(null) }
-
-  val edgeColor =
-    when (graded) {
-      true -> Color(0xFF4CAF50)
-      false -> MaterialTheme.colorScheme.error
-      null -> Color.Transparent
-    }
-
   Card(
     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
     shape = RoundedCornerShape(18.dp),
-    modifier =
-      Modifier.fillMaxWidth()
-        .animateContentSize()
-        .clickable(enabled = !revealed) { revealed = true },
+    modifier = Modifier.fillMaxWidth().animateContentSize(),
   ) {
-    Row(modifier = Modifier.fillMaxWidth()) {
-      // Grade edge indicator.
-      Box(modifier = Modifier.width(4.dp).height(if (revealed) 120.dp else 56.dp).background(edgeColor))
-      Column(modifier = Modifier.padding(16.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(item.question, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+    Column(modifier = Modifier.padding(16.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+      Text(item.question, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
 
-        if (item.isMultipleChoice) {
-          item.options.forEach { opt ->
-            val isCorrect = revealed && opt.trim().equals(item.answer.trim(), ignoreCase = true)
-            Row(
-              verticalAlignment = Alignment.CenterVertically,
-              modifier =
-                Modifier.fillMaxWidth()
-                  .background(
-                    if (isCorrect) accent.copy(alpha = 0.18f) else Color.Transparent,
-                    RoundedCornerShape(10.dp),
-                  )
-                  .padding(horizontal = 10.dp, vertical = 8.dp),
-            ) {
-              if (isCorrect) {
-                Icon(Icons.Rounded.Check, contentDescription = null, tint = accent, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(8.dp))
-              }
-              Text(opt, style = MaterialTheme.typography.bodyMedium)
-            }
-          }
-        }
+      if (item.isMultipleChoice) {
+        McqOptions(item = item, accent = accent)
+      } else {
+        Flashcard(item = item, accent = accent)
+      }
 
-        if (!revealed) {
-          Text(
-            "Tap to reveal answer",
-            style = MaterialTheme.typography.labelMedium,
-            color = accent,
-          )
-        } else {
-          AnimatedVisibility(visible = true) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-              if (!item.isMultipleChoice) {
-                Surface(
-                  color = accent.copy(alpha = 0.14f),
-                  shape = RoundedCornerShape(10.dp),
-                ) {
-                  Text(
-                    item.answer,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp).fillMaxWidth(),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
-                  )
-                }
-              }
-              if (item.sourceLabel.isNotBlank()) {
-                Text(
-                  "from ${item.sourceLabel}",
-                  style = MaterialTheme.typography.labelSmall,
-                  color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-              }
-              // Self-grade row.
-              Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                GradePill(label = "Got it", selected = graded == true, color = Color(0xFF4CAF50)) { graded = true }
-                GradePill(label = "Missed", selected = graded == false, color = MaterialTheme.colorScheme.error) { graded = false }
-              }
-            }
-          }
-        }
+      if (item.sourceLabel.isNotBlank()) {
+        Text(
+          "from ${item.sourceLabel}",
+          style = MaterialTheme.typography.labelSmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
       }
     }
   }
 }
 
+private val CorrectGreen = Color(0xFF2E7D32)
+
 @Composable
-private fun GradePill(label: String, selected: Boolean, color: Color, onClick: () -> Unit) {
-  Surface(
-    onClick = onClick,
-    shape = CircleShape,
-    color = if (selected) color.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceContainerHighest,
-    modifier = Modifier.height(36.dp),
-  ) {
-    Row(
-      verticalAlignment = Alignment.CenterVertically,
-      modifier = Modifier.padding(horizontal = 16.dp).fillMaxSize(),
-    ) {
-      Text(
-        label,
-        style = MaterialTheme.typography.labelLarge,
-        color = if (selected) color else MaterialTheme.colorScheme.onSurfaceVariant,
-        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-      )
+private fun McqOptions(item: QuizItem, accent: Color) {
+  var selected by remember(item) { mutableStateOf<String?>(null) }
+  val locked = selected != null
+
+  Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    item.options.forEach { opt ->
+      val isCorrect = opt.trim().equals(item.answer.trim(), ignoreCase = true)
+      val isPicked = opt == selected
+
+      val (bg, borderColor) = when {
+        !locked -> MaterialTheme.colorScheme.surfaceContainerHighest to Color.Transparent
+        isCorrect -> CorrectGreen.copy(alpha = 0.18f) to CorrectGreen
+        isPicked -> MaterialTheme.colorScheme.error.copy(alpha = 0.15f) to MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.surfaceContainerHighest to Color.Transparent
+      }
+
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier =
+          Modifier.fillMaxWidth()
+            .background(bg, RoundedCornerShape(12.dp))
+            .border(1.dp, borderColor, RoundedCornerShape(12.dp))
+            .clickable(enabled = !locked) { selected = opt }
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+      ) {
+        Text(opt, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        if (locked && isCorrect) {
+          Icon(Icons.Rounded.Check, contentDescription = "Correct", tint = CorrectGreen, modifier = Modifier.size(18.dp))
+        } else if (locked && isPicked) {
+          Icon(Icons.Rounded.Close, contentDescription = "Your pick", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+        }
+      }
+    }
+
+    if (!locked) {
+      Text("Tap an option to answer", style = MaterialTheme.typography.labelMedium, color = accent)
     }
   }
 }
 
 @Composable
-private fun CitationCard(citation: Citation) {
-  Card(
-    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-    shape = RoundedCornerShape(14.dp),
-  ) {
-    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-      Text(citation.sourceLabel, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelMedium)
+private fun Flashcard(item: QuizItem, accent: Color) {
+  var revealed by remember(item) { mutableStateOf(false) }
+  if (!revealed) {
+    Surface(
+      onClick = { revealed = true },
+      color = MaterialTheme.colorScheme.surfaceContainerHighest,
+      shape = RoundedCornerShape(12.dp),
+      modifier = Modifier.fillMaxWidth(),
+    ) {
       Text(
-        "“${citation.snippet}”",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        "Tap to reveal answer",
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+        style = MaterialTheme.typography.labelMedium,
+        color = accent,
+      )
+    }
+  } else {
+    Surface(
+      color = accent.copy(alpha = 0.14f),
+      shape = RoundedCornerShape(12.dp),
+      modifier = Modifier.fillMaxWidth(),
+    ) {
+      Text(
+        item.answer,
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp).fillMaxWidth(),
+        style = MaterialTheme.typography.bodyMedium,
+        fontWeight = FontWeight.Medium,
       )
     }
   }
@@ -408,7 +452,7 @@ private fun EmptyState(hasNotes: Boolean, accent: Color) {
     Icon(Icons.Rounded.MenuBook, contentDescription = null, tint = accent, modifier = Modifier.size(48.dp))
     Spacer(Modifier.height(16.dp))
     Text(
-      if (hasNotes) "Ready to quiz" else "Study from your own notes",
+      if (hasNotes) "Ask, quiz, or summarize" else "Study from your own notes",
       style = MaterialTheme.typography.titleMedium,
       fontWeight = FontWeight.Bold,
       textAlign = TextAlign.Center,
@@ -416,7 +460,7 @@ private fun EmptyState(hasNotes: Boolean, accent: Color) {
     Spacer(Modifier.height(8.dp))
     Text(
       if (hasNotes)
-        "Pick a topic below, then tap Quiz me or Summarize."
+        "Type a question about your notes, or tap Quiz me or Summarize. You can keep the conversation going."
       else
         "Attach a note or document below. It's indexed on-device and never leaves your phone.",
       style = MaterialTheme.typography.bodyMedium,
@@ -427,49 +471,76 @@ private fun EmptyState(hasNotes: Boolean, accent: Color) {
 }
 
 @Composable
-private fun GeneratingState(accent: Color) {
-  Column(
-    modifier = Modifier.fillMaxSize().padding(32.dp),
-    horizontalAlignment = Alignment.CenterHorizontally,
-    verticalArrangement = Arrangement.Center,
-  ) {
-    CircularProgressIndicator(color = accent)
-    Spacer(Modifier.height(16.dp))
+private fun GeneratingBubble(accent: Color) {
+  Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
+    Surface(
+      color = MaterialTheme.colorScheme.surfaceContainerHigh,
+      shape = RoundedCornerShape(18.dp, 18.dp, 18.dp, 4.dp),
+    ) {
+      Row(
+        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+      ) {
+        CircularProgressIndicator(color = accent, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+        Text("Thinking from your notes…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Knowledge-scope toggle (top bar)
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun KnowledgeScopeToggle(scope: KnowledgeScope, accent: Color, onToggle: () -> Unit) {
+  val on = scope == KnowledgeScope.NOTES_AND_MODEL
+  TextButton(onClick = onToggle) {
+    Icon(
+      Icons.Rounded.Lightbulb,
+      contentDescription = null,
+      tint = if (on) accent else MaterialTheme.colorScheme.onSurfaceVariant,
+      modifier = Modifier.size(18.dp),
+    )
+    Spacer(Modifier.width(6.dp))
     Text(
-      "Generating from your notes…",
-      style = MaterialTheme.typography.bodyMedium,
-      color = MaterialTheme.colorScheme.onSurfaceVariant,
+      if (on) "Notes + AI" else "Notes only",
+      style = MaterialTheme.typography.labelMedium,
+      color = if (on) accent else MaterialTheme.colorScheme.onSurfaceVariant,
     )
   }
 }
 
 // ---------------------------------------------------------------------------
-// Bottom controls
+// Bottom input bar
 // ---------------------------------------------------------------------------
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun BottomControls(
+private fun InputBar(
   uiState: RagUiState,
   query: String,
   accent: Color,
   onQueryChange: (String) -> Unit,
   onAttach: () -> Unit,
   onRemoveSource: (String) -> Unit,
-  onScopeChange: (KnowledgeScope) -> Unit,
+  onSend: () -> Unit,
   onQuiz: () -> Unit,
   onSummarize: () -> Unit,
 ) {
+  val hasNotes = uiState.indexedSources.isNotEmpty()
+  val busy = uiState.generating
   Surface(
     color = MaterialTheme.colorScheme.surfaceContainerLow,
     shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
     tonalElevation = 3.dp,
   ) {
     Column(
-      modifier = Modifier.fillMaxWidth().padding(16.dp).navigationBarsPadding().imePadding(),
-      verticalArrangement = Arrangement.spacedBy(12.dp),
+      modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp).navigationBarsPadding().imePadding(),
+      verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-      // Attached notes as a horizontally-scrolling chip row + attach button.
+      // Attached-note chips (+ attach affordance).
       Row(
         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -478,7 +549,7 @@ private fun BottomControls(
         AssistChip(
           onClick = onAttach,
           enabled = !uiState.ingesting,
-          label = { Text(if (uiState.ingesting) "Indexing…" else "Attach note") },
+          label = { Text(if (uiState.ingesting) "Indexing…" else "Attach") },
           leadingIcon = {
             if (uiState.ingesting) {
               CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
@@ -499,64 +570,85 @@ private fun BottomControls(
         }
       }
 
-      // Knowledge-scope toggle.
-      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterChip(
-          selected = uiState.knowledgeScope == KnowledgeScope.NOTES_ONLY,
-          onClick = { onScopeChange(KnowledgeScope.NOTES_ONLY) },
-          label = { Text("My notes only") },
-          colors = FilterChipDefaults.filterChipColors(selectedContainerColor = accent.copy(alpha = 0.22f)),
-        )
-        FilterChip(
-          selected = uiState.knowledgeScope == KnowledgeScope.NOTES_AND_MODEL,
-          onClick = { onScopeChange(KnowledgeScope.NOTES_AND_MODEL) },
-          label = { Text("Notes + AI knowledge") },
-          colors = FilterChipDefaults.filterChipColors(selectedContainerColor = accent.copy(alpha = 0.22f)),
-        )
-      }
-
-      // Topic field.
-      OutlinedTextField(
-        value = query,
-        onValueChange = onQueryChange,
+      // Text field + send.
+      Row(
         modifier = Modifier.fillMaxWidth(),
-        label = { Text("Topic (optional) — e.g. “DBMS normalization”") },
-        singleLine = true,
-      )
-
-      // Actions.
-      val hasNotes = uiState.indexedSources.isNotEmpty()
-      val enabled = !uiState.generating && hasNotes
-      Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-        Button(
-          onClick = onQuiz,
-          enabled = enabled,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        TextField(
+          value = query,
+          onValueChange = onQueryChange,
           modifier = Modifier.weight(1f),
-          colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = Color.Black),
-        ) {
-          Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
-          Spacer(Modifier.width(8.dp))
-          Text("Quiz me")
-        }
-        Button(
-          onClick = onSummarize,
-          enabled = enabled,
-          modifier = Modifier.weight(1f),
+          placeholder = { Text("Ask about your notes…") },
+          maxLines = 4,
+          shape = RoundedCornerShape(22.dp),
           colors =
-            ButtonDefaults.buttonColors(
-              containerColor = MaterialTheme.colorScheme.secondaryContainer,
-              contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            TextFieldDefaults.colors(
+              focusedIndicatorColor = Color.Transparent,
+              unfocusedIndicatorColor = Color.Transparent,
+              disabledIndicatorColor = Color.Transparent,
+              focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+              unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+            ),
+          keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+          keyboardActions = KeyboardActions(onSend = { if (hasNotes && !busy && query.isNotBlank()) onSend() }),
+        )
+        val canSend = hasNotes && !busy && query.isNotBlank()
+        IconButton(
+          onClick = onSend,
+          enabled = canSend,
+          modifier =
+            Modifier.size(48.dp).background(
+              if (canSend) accent else MaterialTheme.colorScheme.surfaceContainerHighest,
+              CircleShape,
             ),
         ) {
-          Icon(Icons.Rounded.Summarize, contentDescription = null, modifier = Modifier.size(18.dp))
-          Spacer(Modifier.width(8.dp))
-          Text("Summarize")
+          Icon(
+            Icons.AutoMirrored.Rounded.Send,
+            contentDescription = "Send",
+            tint = if (canSend) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp),
+          )
         }
+      }
+
+      // Quiz / Summarize quick actions.
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        QuickAction(icon = Icons.Rounded.AutoAwesome, label = "Quiz me", enabled = hasNotes && !busy, accent = accent, onClick = onQuiz)
+        QuickAction(icon = Icons.Rounded.Summarize, label = "Summarize", enabled = hasNotes && !busy, accent = accent, onClick = onSummarize)
       }
 
       uiState.errorMessage?.let { error ->
         Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
       }
+    }
+  }
+}
+
+@Composable
+private fun QuickAction(
+  icon: androidx.compose.ui.graphics.vector.ImageVector,
+  label: String,
+  enabled: Boolean,
+  accent: Color,
+  onClick: () -> Unit,
+) {
+  val tint = if (enabled) accent else MaterialTheme.colorScheme.onSurfaceVariant
+  Surface(
+    onClick = onClick,
+    enabled = enabled,
+    shape = CircleShape,
+    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+    modifier = Modifier.height(36.dp),
+  ) {
+    Row(
+      verticalAlignment = Alignment.CenterVertically,
+      modifier = Modifier.padding(horizontal = 14.dp).fillMaxSize(),
+      horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+      Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
+      Text(label, style = MaterialTheme.typography.labelLarge, color = tint)
     }
   }
 }
