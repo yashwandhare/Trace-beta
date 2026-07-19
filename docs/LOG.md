@@ -135,3 +135,19 @@ Built the Phase 3 RAG backend + AI Chat wiring on `dev-a` (updated to the cleane
   - **Firebase Analytics + INTERNET perm** still present from the fork (Dev C2 deliberately left Analytics; degrades to null). Not a RAG concern but still open for a full offline-hardening pass.
 - Benchmark numbers: `:app:assembleDebug` BUILD SUCCESSFUL (1m22s). Debug APK ~219MB (grew ~20MB: MediaPipe tasks-text native libs + the 5.9MB model asset).
 
+---
+
+## 2026-07-19 — Dev C1 — Phase 3 (RAG) — standalone module, citations, knowledge toggle
+Product calls confirmed with owner (see new `/DECISIONS.md` entry): web search REJECTED (offline-pure stays), knowledge-scope toggle added, RAG promoted to its own homescreen module.
+- Did:
+  - **Citations:** `Citation` type added to contracts; `RagResponse.citations` built deterministically from the retrieved chunks (source label + snippet + similarity score) — never parsed from model output, so they can't be hallucinated. Chat fallback rendering appends a "Sources:" block; the module screen shows citation cards.
+  - **Knowledge toggle:** `KnowledgeScope` (NOTES_ONLY / NOTES_AND_MODEL) threads through prompt building. Both modes fully offline.
+  - **Standalone "Notes" module:** `BuiltInTaskId.RAG` + `RagTask` (`@IntoSet`, `ui/rag/RagTaskModule.kt`) → auto-appears on the homescreen. `RagScreen` baseline UI: attach/remove documents (SAF picker → `DocumentExtractor` → ingest), topic field, "Quiz me" / "Summarize" buttons, scope FilterChips, result panel + citations. `RagViewModel` owns UI state; pipeline stays in the engine.
+  - **Shared index:** `RagEngine` is now an app-scoped Hilt singleton (`RagDiModule`), injected into both `LlmChatViewModel` and `RagViewModel` — notes attached in AI Chat are queryable from the Notes module and vice versa. `LlmChatViewModelBase` keeps a local-engine fallback for non-Hilt construction (closed in `onCleared`; the shared singleton is not).
+  - **Blank-topic fallback:** "quiz me on my notes" with no specific topic often embeds far from any chunk; when similarity search returns empty but notes exist, generation grounds on a sample of indexed chunks (`VectorStore.sample`) instead of failing.
+- Broken/open:
+  - **Dev C2 handoff:** `RagResultPanel` in `ui/rag/RagScreen.kt` is the marked replacement point for the real Quiz/Flashcard cards (answer reveal, right/wrong feedback), consuming `RagUiState.response` (`List<QuizItem>`). Voice PTT is not on the RAG screen (chat's voice path covers spoken quiz requests).
+  - Real-device validation still pending for the whole Phase 3 stack (embedding latency, retrieval quality, quiz-JSON reliability, and now the new module UI).
+- Benchmark numbers: `:app:assembleDebug` BUILD SUCCESSFUL. Debug APK ~221MB at project root.
+
+
