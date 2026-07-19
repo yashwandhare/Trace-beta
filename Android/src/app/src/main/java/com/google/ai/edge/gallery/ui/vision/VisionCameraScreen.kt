@@ -20,13 +20,12 @@ import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.util.Log
 import android.util.Size
-import androidx.camera.core.AspectRatio
 import androidx.camera.core.CameraControl
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
-import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
@@ -35,50 +34,57 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.lifecycle.awaitInstance
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.rounded.Camera
-import androidx.compose.material.icons.rounded.Videocam
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.FlipCameraAndroid
+import androidx.compose.material.icons.rounded.FiberManualRecord
+import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.width
-import androidx.compose.material3.Text
-import androidx.compose.material3.Switch
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.google.ai.edge.gallery.data.BuiltInTaskId
-import com.google.ai.edge.gallery.data.Task
-import com.google.ai.edge.gallery.ui.common.chat.ChatSide
 import com.google.ai.edge.gallery.ui.llmchat.ChatViewWrapper
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
+import kotlinx.coroutines.launch
 import java.util.concurrent.Executors
 
 private const val TAG = "VisionCameraScreen"
@@ -90,10 +96,13 @@ fun VisionCameraScreen(
   onNavUp: () -> Unit,
   viewModel: VisionChatViewModel = hiltViewModel()
 ) {
-  var capturedBitmap by remember { mutableStateOf<Bitmap?>(null) }
   val context = LocalContext.current
+  val scope = rememberCoroutineScope()
   val task = modelManagerViewModel.getTaskById(BuiltInTaskId.VISION)
-  
+
+  // Once a photo is captured, switch to the chat view
+  var capturedBitmap by remember { mutableStateOf<Bitmap?>(null) }
+
   LaunchedEffect(task) {
     if (task != null) {
       viewModel.loadSystemPrompt(task)
@@ -102,107 +111,136 @@ fun VisionCameraScreen(
   }
 
   if (capturedBitmap != null && task != null) {
-    val selectedModel = modelManagerViewModel.uiState.value.selectedModel
-    // Show ChatViewWrapper with the VisionChatViewModel
+    // ---- Chat View ----
     ChatViewWrapper(
       viewModel = viewModel,
       modelManagerViewModel = modelManagerViewModel,
       taskId = BuiltInTaskId.VISION,
-      navigateUp = { capturedBitmap = null }, // Back button goes back to camera
-      emptyStateComposable = { }, // Keep it empty for overlay
-      showImagePicker = true
+      navigateUp = { capturedBitmap = null }, // Back button returns to camera
+      emptyStateComposable = { },
+      showImagePicker = true,
     )
   } else {
-    // Show Camera View
+    // ---- Camera View (matching AI Chat camera style) ----
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    val previewUseCase = remember { Preview.Builder().build() }
+    val imageCaptureUseCase = remember {
+      val resolutionStrategy = ResolutionStrategy(
+        Size(1024, 1024),
+        ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER,
+      )
+      val resolutionSelector = ResolutionSelector.Builder()
+        .setResolutionStrategy(resolutionStrategy)
+        .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+        .build()
+      ImageCapture.Builder().setResolutionSelector(resolutionSelector).build()
+    }
+    var cameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
+    var cameraControl by remember { mutableStateOf<CameraControl?>(null) }
+    var cameraSide by remember { mutableIntStateOf(CameraSelector.LENS_FACING_BACK) }
+    val executor = remember { Executors.newSingleThreadExecutor() }
+
+    // Video mode state
+    var isVideoMode by remember { mutableStateOf(false) }
+    var isRecording by remember { mutableStateOf(false) }
+    val recordedFrames = remember { mutableStateListOf<Bitmap>() }
+    var lastFrameTimeMs by remember { mutableStateOf(0L) }
+    var recordingStartMs by remember { mutableStateOf(0L) }
+    var recordingElapsedSecs by remember { mutableStateOf(0) }
+
+    // Tick the recording timer every second
+    LaunchedEffect(isRecording) {
+      if (isRecording) {
+        while (isRecording) {
+          kotlinx.coroutines.delay(1000)
+          if (isRecording) {
+            recordingElapsedSecs = ((System.currentTimeMillis() - recordingStartMs) / 1000).toInt()
+          }
+        }
+      } else {
+        recordingElapsedSecs = 0
+      }
+    }
+
+    val imageAnalysisUseCase = remember {
+      ImageAnalysis.Builder()
+        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+        .build()
+        .also { analysis ->
+          analysis.setAnalyzer(executor) { image ->
+            if (isRecording) {
+              val currentTime = System.currentTimeMillis()
+              // 1 frame every 3 seconds — keeps frame count low for longer videos
+              if (currentTime - lastFrameTimeMs > 3000) {
+                try {
+                  val bitmap = image.toBitmap()
+                  val rotation = image.imageInfo.rotationDegrees
+                  val matrix = Matrix().apply { postRotate(rotation.toFloat()) }
+                  val rotatedBitmap = Bitmap.createBitmap(
+                    bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true
+                  )
+                  recordedFrames.add(rotatedBitmap)
+                  lastFrameTimeMs = currentTime
+                } catch (e: Exception) {
+                  Log.e(TAG, "Error capturing frame for video", e)
+                }
+              }
+            }
+            image.close()
+          }
+        }
+    }
+
+    fun rebindCameraProvider() {
+      cameraProvider?.let { provider ->
+        val cameraSelector = CameraSelector.Builder().requireLensFacing(cameraSide).build()
+        try {
+          provider.unbindAll()
+          val camera = provider.bindToLifecycle(
+            lifecycleOwner = lifecycleOwner,
+            cameraSelector = cameraSelector,
+            previewUseCase,
+            imageCaptureUseCase,
+            imageAnalysisUseCase,
+          )
+          cameraControl = camera.cameraControl
+        } catch (e: Exception) {
+          Log.e(TAG, "Failed to bind camera", e)
+        }
+      }
+    }
+
+    LaunchedEffect(Unit) {
+      cameraProvider = ProcessCameraProvider.awaitInstance(context)
+      rebindCameraProvider()
+    }
+
+    LaunchedEffect(cameraSide) { rebindCameraProvider() }
+
+    DisposableEffect(Unit) {
+      onDispose {
+        cameraProvider?.unbindAll()
+        if (!executor.isShutdown) executor.shutdown()
+      }
+    }
+
     Scaffold(
       topBar = {
         TopAppBar(
-          title = { },
+          title = { Text("Vision", color = Color.White) },
           navigationIcon = {
             IconButton(onClick = onNavUp) {
-              Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+              Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
             }
           },
-          colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+          colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black.copy(alpha = 0.4f))
         )
-      }
+      },
+      containerColor = Color.Black,
     ) { paddingValues ->
       Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
-        val lifecycleOwner = LocalLifecycleOwner.current
-        val previewUseCase = remember { Preview.Builder().build() }
-        val imageCaptureUseCase = remember {
-          val preferredSize = Size(1024, 1024)
-          val resolutionStrategy =
-            ResolutionStrategy(
-              preferredSize,
-              ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER,
-            )
-          val resolutionSelector =
-            ResolutionSelector.Builder()
-              .setResolutionStrategy(resolutionStrategy)
-              .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
-              .build()
-
-          ImageCapture.Builder().setResolutionSelector(resolutionSelector).build()
-        }
-        var cameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
-        var cameraControl by remember { mutableStateOf<CameraControl?>(null) }
-        val cameraSide by remember { mutableIntStateOf(CameraSelector.LENS_FACING_BACK) }
-        val executor = remember { Executors.newSingleThreadExecutor() }
-
-        var isVideoMode by remember { mutableStateOf(false) }
-        var isRecording by remember { mutableStateOf(false) }
-        val recordedFrames = remember { mutableStateListOf<Bitmap>() }
-        var lastFrameTimeMs by remember { mutableStateOf(0L) }
-
-        val imageAnalysisUseCase = remember {
-          ImageAnalysis.Builder()
-            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-            .build()
-            .apply {
-              setAnalyzer(executor) { image ->
-                if (isRecording) {
-                  val currentTime = System.currentTimeMillis()
-                  // Record 1 frame per second
-                  if (currentTime - lastFrameTimeMs > 1000) {
-                    val bitmap = image.toBitmap()
-                    val rotation = image.imageInfo.rotationDegrees
-                    val matrix = Matrix().apply { postRotate(rotation.toFloat()) }
-                    val rotatedBitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-                    recordedFrames.add(rotatedBitmap)
-                    lastFrameTimeMs = currentTime
-                  }
-                }
-                image.close()
-              }
-            }
-        }
-
-        fun rebindCameraProvider() {
-          cameraProvider?.let { provider ->
-            val cameraSelector = CameraSelector.Builder().requireLensFacing(cameraSide).build()
-            try {
-              provider.unbindAll()
-              val camera =
-                provider.bindToLifecycle(
-                  lifecycleOwner = lifecycleOwner,
-                  cameraSelector = cameraSelector,
-                  previewUseCase,
-                  imageCaptureUseCase,
-                  imageAnalysisUseCase
-                )
-              cameraControl = camera.cameraControl
-            } catch (e: Exception) {
-              Log.e(TAG, "Failed to bind camera", e)
-            }
-          }
-        }
-
-        LaunchedEffect(Unit) {
-          cameraProvider = ProcessCameraProvider.awaitInstance(context)
-          rebindCameraProvider()
-        }
-
+        // Camera preview
         AndroidView(
           modifier = Modifier.fillMaxSize(),
           factory = { ctx ->
@@ -217,101 +255,183 @@ fun VisionCameraScreen(
           },
         )
 
-        // UI Controls at the bottom
+        // Controls at the bottom — same layout as AI Chat camera sheet
         Column(
-          modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 32.dp),
-          horizontalAlignment = Alignment.CenterHorizontally
+          modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .padding(bottom = 40.dp),
+          horizontalAlignment = Alignment.CenterHorizontally,
+          verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-          // Photo / Video Toggle
-          Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(text = "Photo", color = if (!isVideoMode) Color.White else Color.Gray)
-            Spacer(modifier = Modifier.width(8.dp))
-            Switch(
-              checked = isVideoMode,
-              onCheckedChange = { 
-                isVideoMode = it
-                if (!it) isRecording = false // Stop recording if switched
-              }
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(text = "Video", color = if (isVideoMode) Color.White else Color.Gray)
+          // Recording timer badge
+          if (isRecording) {
+            val mins = recordingElapsedSecs / 60
+            val secs = recordingElapsedSecs % 60
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(6.dp),
+              modifier = Modifier
+                .background(Color.Black.copy(alpha = 0.5f), shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+            ) {
+              Box(
+                modifier = Modifier
+                  .size(8.dp)
+                  .background(Color.Red, shape = CircleShape)
+              )
+              Text(
+                text = "%02d:%02d".format(mins, secs),
+                color = Color.White,
+                style = MaterialTheme.typography.labelLarge,
+              )
+              Text(
+                text = "${recordedFrames.size} frames",
+                color = Color.White.copy(alpha = 0.7f),
+                style = MaterialTheme.typography.labelSmall,
+              )
+            }
           }
 
-          // Capture / Record Button
-          IconButton(
-            onClick = {
-              if (isVideoMode) {
-                if (isRecording) {
-                  // Stop recording
-                  isRecording = false
-                  if (recordedFrames.isNotEmpty()) {
+          // Photo / Video toggle
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+          ) {
+            Text(
+              text = "Photo",
+              color = if (!isVideoMode) Color.White else Color.White.copy(alpha = 0.5f),
+              style = MaterialTheme.typography.labelLarge,
+            )
+            Switch(
+              checked = isVideoMode,
+              onCheckedChange = {
+                isVideoMode = it
+                if (!it) isRecording = false
+              },
+            )
+            Text(
+              text = "Video",
+              color = if (isVideoMode) Color.White else Color.White.copy(alpha = 0.5f),
+              style = MaterialTheme.typography.labelLarge,
+            )
+          }
+
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(24.dp),
+          ) {
+            // Camera flip button (same as AI Chat camera)
+            IconButton(
+              onClick = {
+                cameraSide = if (cameraSide == CameraSelector.LENS_FACING_BACK)
+                  CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK
+              },
+              modifier = Modifier.size(48.dp),
+              colors = IconButtonDefaults.iconButtonColors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer
+              ),
+            ) {
+              Icon(
+                Icons.Rounded.FlipCameraAndroid,
+                contentDescription = "Flip camera",
+                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+              )
+            }
+
+            // Main capture / record button (same style as AI Chat camera shutter)
+            IconButton(
+              onClick = {
+                if (isVideoMode) {
+                  if (isRecording) {
+                    // Stop recording → switch to chat
+                    isRecording = false
                     val framesToProcess = recordedFrames.toList()
-                    capturedBitmap = framesToProcess.first() // Just to trigger ChatViewWrapper
-                    val selectedModel = modelManagerViewModel.uiState.value.selectedModel
-                    viewModel.processVideoFrames(
-                      model = selectedModel,
-                      bitmaps = framesToProcess,
-                      input = ""
-                    )
+                    if (framesToProcess.isNotEmpty()) {
+                      capturedBitmap = framesToProcess.first()
+                      val selectedModel = modelManagerViewModel.uiState.value.selectedModel
+                      scope.launch {
+                        viewModel.processVideoFrames(
+                          model = selectedModel,
+                          bitmaps = framesToProcess,
+                          input = "",
+                        )
+                      }
+                      recordedFrames.clear()
+                    }
+                  } else {
+                    // Start recording
                     recordedFrames.clear()
+                    recordingStartMs = System.currentTimeMillis()
+                    lastFrameTimeMs = System.currentTimeMillis()
+                    isRecording = true
                   }
                 } else {
-                  // Start recording
-                  recordedFrames.clear()
-                  lastFrameTimeMs = System.currentTimeMillis()
-                  isRecording = true
+                  // Photo mode — same capture callback as AI Chat
+                  imageCaptureUseCase.takePicture(
+                    executor,
+                    object : ImageCapture.OnImageCapturedCallback() {
+                      override fun onCaptureSuccess(image: ImageProxy) {
+                        try {
+                          val bitmap = image.toBitmap()
+                          val rotation = image.imageInfo.rotationDegrees
+                          val matrix = Matrix().apply { postRotate(rotation.toFloat()) }
+                          val rotated = Bitmap.createBitmap(
+                            bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true
+                          )
+                          // Post to main thread before touching Compose state
+                          android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            capturedBitmap = rotated
+                            val selectedModel = modelManagerViewModel.uiState.value.selectedModel
+                            scope.launch {
+                              viewModel.processCameraFrame(
+                                model = selectedModel,
+                                bitmap = rotated,
+                                input = "",
+                              )
+                            }
+                          }
+                        } catch (e: Exception) {
+                          Log.e(TAG, "Error processing captured image", e)
+                        } finally {
+                          image.close()
+                        }
+                      }
+
+                      override fun onError(exception: ImageCaptureException) {
+                        Log.e(TAG, "Failed to capture image", exception)
+                      }
+                    },
+                  )
                 }
-              } else {
-                // Photo Mode
-                imageCaptureUseCase.takePicture(
-                  executor,
-                  object : ImageCapture.OnImageCapturedCallback() {
-                    override fun onCaptureSuccess(image: ImageProxy) {
-                      val bitmap = image.toBitmap()
-                      val rotation = image.imageInfo.rotationDegrees
-                      image.close()
-
-                      val matrix = Matrix()
-                      matrix.postRotate(rotation.toFloat())
-                      val rotatedBitmap =
-                        Bitmap.createBitmap(
-                          bitmap,
-                          0,
-                          0,
-                          bitmap.width,
-                          bitmap.height,
-                          matrix,
-                          true,
-                        )
-                      capturedBitmap = rotatedBitmap
-                      
-                      // Trigger processCameraFrame immediately after capture
-                      val selectedModel = modelManagerViewModel.uiState.value.selectedModel
-                      viewModel.processCameraFrame(
-                        model = selectedModel,
-                        bitmap = rotatedBitmap,
-                        input = "" // Default input used in ViewModel ("What do you see?")
-                      )
-                    }
-
-                    override fun onError(exception: ImageCaptureException) {
-                      Log.e(TAG, "Failed to capture image", exception)
-                    }
-                  },
+              },
+              modifier = Modifier
+                .size(72.dp)
+                .border(
+                  width = 3.dp,
+                  color = Color.White,
+                  shape = CircleShape,
                 )
-              }
-            },
-            modifier = Modifier
-              .padding(top = 16.dp)
-              .size(80.dp)
-              .background(if (isRecording) Color.Red.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.5f), CircleShape),
-          ) {
-            Icon(
-              imageVector = if (isVideoMode) Icons.Rounded.Videocam else Icons.Rounded.Camera,
-              contentDescription = if (isVideoMode) "Record" else "Capture",
-              modifier = Modifier.size(48.dp),
-              tint = Color.Black
-            )
+                .background(
+                  color = if (isRecording) Color.Red.copy(alpha = 0.7f)
+                          else Color.White.copy(alpha = 0.15f),
+                  shape = CircleShape,
+                ),
+              colors = IconButtonDefaults.iconButtonColors(containerColor = Color.Transparent),
+            ) {
+              Icon(
+                imageVector = when {
+                  isVideoMode && isRecording -> Icons.Rounded.Stop
+                  isVideoMode -> Icons.Rounded.FiberManualRecord
+                  else -> Icons.Rounded.Camera
+                },
+                contentDescription = if (isVideoMode) "Record" else "Capture",
+                modifier = Modifier.size(40.dp),
+                tint = if (isVideoMode && !isRecording) Color.Red else Color.White,
+              )
+            }
+
+            // Placeholder to balance layout (same width as flip button)
+            Spacer(modifier = Modifier.size(48.dp))
           }
         }
       }

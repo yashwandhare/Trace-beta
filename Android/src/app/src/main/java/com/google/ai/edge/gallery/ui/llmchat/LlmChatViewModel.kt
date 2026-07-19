@@ -363,9 +363,17 @@ open class LlmChatViewModelBase(
             model.getBooleanConfigValue(key = ConfigKeys.ENABLE_THINKING, defaultValue = false)
         val extraContext = if (enableThinking) mapOf("enable_thinking" to "true") else null
 
+        var finalInput = input
+        if (files.isNotEmpty()) {
+            val fileText = files.joinToString("\n\n") { it.extractedText }
+            if (fileText.isNotBlank()) {
+                finalInput = "[Attached Document Content:]\n$fileText\n\n$finalInput"
+            }
+        }
+
         model.runtimeHelper.runInference(
           model = model,
-          input = input,
+          input = finalInput,
           images = images,
           audioClips = audioClips,
           resultListener = resultListener,

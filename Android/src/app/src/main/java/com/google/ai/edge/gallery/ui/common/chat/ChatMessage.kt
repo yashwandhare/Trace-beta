@@ -183,6 +183,7 @@ class ChatMessageImage(
 /** Chat message for files (documents). */
 class ChatMessageFile(
   val uris: List<android.net.Uri>,
+  val extractedText: String = "",
   override val side: ChatSide,
   override val latencyMs: Float = 0f,
   override val accelerator: String = "",
@@ -198,6 +199,7 @@ class ChatMessageFile(
   override fun clone(): ChatMessageFile {
     return ChatMessageFile(
       uris = uris.toList(),
+      extractedText = extractedText,
       side = side,
       latencyMs = latencyMs,
       accelerator = accelerator,

@@ -214,7 +214,7 @@ fun MessageInputText(
   var showAudioRecorder by remember { mutableStateOf(false) }
   val audioRecorderSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
   var pickedImages by remember { mutableStateOf<List<Bitmap>>(listOf()) }
-  var pickedFiles by remember { mutableStateOf<List<android.net.Uri>>(listOf()) }
+  var pickedFiles by remember { mutableStateOf<List<Pair<android.net.Uri, String>>>(listOf()) }
   var pickedAudioClips by remember { mutableStateOf<List<AudioClip>>(listOf()) }
   var hasFrontCamera by remember { mutableStateOf(false) }
   val sensorObserver = remember { SensorObserver(context) }
@@ -474,10 +474,50 @@ fun MessageInputText(
       contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
       if (uri != null) {
-        val currentFiles = pickedFiles.toMutableList()
-        if (!currentFiles.contains(uri)) {
-          currentFiles.add(uri)
-          pickedFiles = currentFiles
+        // Take persistable read permission so the URI doesn't expire
+        try {
+          context.contentResolver.takePersistableUriPermission(
+            uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+          )
+        } catch (_: Exception) { /* non-persistable URIs are fine to ignore */ }
+
+        // Extract document text on IO thread using type-aware DocumentExtractor.
+        // PDFs are rendered page-by-page via PdfRenderer + ML Kit OCR.
+        // Plain text / DOCX / PPTX use fast structural extraction.
+        scope.launch(Dispatchers.IO) {
+          try {
+            val mimeType = context.contentResolver.getType(uri) ?: ""
+            val isPdf = mimeType == "application/pdf"
+
+            // Show a toast so user knows extraction is underway (PDF OCR takes a few seconds)
+            if (isPdf) {
+              kotlinx.coroutines.withContext(Dispatchers.Main) {
+                android.widget.Toast.makeText(
+                  context, "Extracting PDF text…", android.widget.Toast.LENGTH_SHORT
+                ).show()
+              }
+            }
+
+            val extractor = com.google.ai.edge.gallery.common.DocumentExtractor(context)
+            val textContent = extractor.extract(uri)
+
+            kotlinx.coroutines.withContext(Dispatchers.Main) {
+              if (!textContent.isNullOrBlank()) {
+                pickedFiles = pickedFiles + Pair(uri, textContent)
+              } else {
+                android.widget.Toast.makeText(
+                  context, "Could not extract text from document", android.widget.Toast.LENGTH_SHORT
+                ).show()
+              }
+            }
+          } catch (e: Exception) {
+            Log.e(TAG, "Failed to extract document", e)
+            kotlinx.coroutines.withContext(Dispatchers.Main) {
+              android.widget.Toast.makeText(
+                context, "Failed to read document: ${e.message}", android.widget.Toast.LENGTH_SHORT
+              ).show()
+            }
+          }
         }
       }
     }
@@ -1390,7 +1430,7 @@ private fun checkFrontCamera(context: Context, callback: (Boolean) -> Unit) {
 
 private fun createMessagesToSend(
   pickedImages: List<Bitmap>,
-  pickedFiles: List<android.net.Uri> = listOf(),
+  pickedFiles: List<Pair<android.net.Uri, String>> = listOf(),
   audioClips: List<AudioClip>,
   text: String,
 ): List<ChatMessage> {
@@ -1415,7 +1455,8 @@ private fun createMessagesToSend(
   if (pickedFiles.isNotEmpty()) {
     messages.add(
       ChatMessageFile(
-        uris = pickedFiles,
+        uris = pickedFiles.map { it.first },
+        extractedText = pickedFiles.joinToString("\n\n") { it.second },
         side = ChatSide.USER,
       )
     )

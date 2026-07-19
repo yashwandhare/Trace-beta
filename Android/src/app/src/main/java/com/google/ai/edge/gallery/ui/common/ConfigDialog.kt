@@ -325,7 +325,7 @@ fun LabelRow(config: LabelConfig, values: SnapshotStateMap<String, Any>) {
     // Content label.
     val label =
       try {
-        values[config.key.label] as String
+        (values[config.key.label] ?: config.defaultValue) as String
       } catch (e: Exception) {
         ""
       }
@@ -382,14 +382,15 @@ fun NumberSliderRow(config: NumberSliderConfig, values: SnapshotStateMap<String,
       // value or out of the slider range, temporary while user is still editing the text.
       var textFieldDisplayValue by remember {
         mutableStateOf(
-          getTextFieldDisplayValue(config.valueType, values[config.key.label] as Float)
+          getTextFieldDisplayValue(config.valueType, ((values[config.key.label] ?: config.defaultValue) as? Number)?.toFloat() ?: (config.defaultValue as? Number)?.toFloat() ?: 0f)
         )
       }
 
       // Number slider.
       val sliderValue =
         try {
-          values[config.key.label] as Float
+          ((values[config.key.label] ?: config.defaultValue) as? Number)?.toFloat()
+            ?: (config.defaultValue as? Number)?.toFloat() ?: 0f
         } catch (e: Exception) {
           0f
         }
@@ -416,7 +417,7 @@ fun NumberSliderRow(config: NumberSliderConfig, values: SnapshotStateMap<String,
             // When leaving focus, display the internal value so that any invalid value is cleared.
             if (!isFocused) {
               textFieldDisplayValue =
-                getTextFieldDisplayValue(config.valueType, values[config.key.label] as Float)
+                getTextFieldDisplayValue(config.valueType, ((values[config.key.label] ?: config.defaultValue) as? Number)?.toFloat() ?: (config.defaultValue as? Number)?.toFloat() ?: 0f)
             }
           },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -453,7 +454,8 @@ fun NumberSliderRow(config: NumberSliderConfig, values: SnapshotStateMap<String,
     if (config.key == ConfigKeys.MAX_TOKENS) {
       val sliderValue =
         try {
-          values[config.key.label] as Float
+          ((values[config.key.label] ?: config.defaultValue) as? Number)?.toFloat()
+            ?: (config.defaultValue as? Number)?.toFloat() ?: 0f
         } catch (e: Exception) {
           0f
         }
@@ -479,7 +481,12 @@ fun NumberSliderRow(config: NumberSliderConfig, values: SnapshotStateMap<String,
 fun BooleanSwitchRow(config: BooleanSwitchConfig, values: SnapshotStateMap<String, Any>) {
   val switchValue =
     try {
-      values[config.key.label] as Boolean
+      val raw = values[config.key.label] ?: config.defaultValue
+      when (raw) {
+        is Boolean -> raw
+        is String -> raw.toBooleanStrictOrNull() ?: (config.defaultValue as? Boolean ?: false)
+        else -> config.defaultValue as? Boolean ?: false
+      }
     } catch (e: Exception) {
       false
     }
@@ -497,7 +504,14 @@ fun BooleanSwitchRow(config: BooleanSwitchConfig, values: SnapshotStateMap<Strin
  */
 @Composable
 fun SegmentedButtonRow(config: SegmentedButtonConfig, values: SnapshotStateMap<String, Any>) {
-  val selectedOptions: List<String> = remember { (values[config.key.label] as String).split(",") }
+  val selectedOptions: List<String> = remember {
+    val raw = values[config.key.label] ?: config.defaultValue
+    val str = when (raw) {
+      is String -> raw
+      else -> raw.toString()
+    }
+    str.split(",")
+  }
   var selectionStates: List<Boolean> by remember {
     mutableStateOf(
       List(config.options.size) { index -> selectedOptions.contains(config.options[index]) }

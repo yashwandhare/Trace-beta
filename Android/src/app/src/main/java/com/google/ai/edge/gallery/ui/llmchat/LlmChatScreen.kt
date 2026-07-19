@@ -262,7 +262,7 @@ fun ChatViewWrapper(
           files.add(message)
         }
       }
-      if ((text.isNotEmpty() && chatMessageText != null) || audioMessages.isNotEmpty() || files.isNotEmpty()) {
+      if ((text.isNotEmpty() && chatMessageText != null) || audioMessages.isNotEmpty() || files.isNotEmpty() || images.isNotEmpty()) {
         if (text.isNotEmpty()) {
           modelManagerViewModel.addTextInputHistory(text)
         }
