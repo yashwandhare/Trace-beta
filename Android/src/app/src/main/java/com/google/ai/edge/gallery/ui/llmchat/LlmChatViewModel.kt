@@ -70,6 +70,28 @@ open class LlmChatViewModelBase(
 
   private var ttsManager: com.google.ai.edge.gallery.voice.TtsManager? = null
 
+  // --- Phase 3 RAG ---
+  // Lazily-created engine that ingests attached notes and answers quiz/summary
+  // queries grounded in them. Null until initRag() runs (needs a Context).
+  private var ragEngine: com.google.ai.edge.gallery.rag.RagEngine? = null
+
+  // The most recent quiz/summary the RAG engine produced. Dev C2's Quiz UI
+  // observes this to render cards; null when there's no active RAG result.
+  private val _ragResponse =
+    MutableStateFlow<com.google.ai.edge.gallery.rag.RagResponse?>(null)
+  val ragResponse = _ragResponse.asStateFlow()
+
+  fun initRag(context: android.content.Context) {
+      if (ragEngine == null) {
+          ragEngine = com.google.ai.edge.gallery.rag.RagEngine(context.applicationContext)
+      }
+  }
+
+  /** Clears the surfaced RAG result (e.g. when the UI dismisses the quiz panel). */
+  fun clearRagResponse() {
+      _ragResponse.value = null
+  }
+
   fun initTts(context: android.content.Context) {
       if (ttsManager == null) {
           ttsManager = com.google.ai.edge.gallery.voice.TtsManager(context)
@@ -81,6 +103,12 @@ open class LlmChatViewModelBase(
       ttsManager?.shutdown()
       // Clear the SemanticFileMatcher classifier so it doesn't hold a stale model reference.
       com.google.ai.edge.gallery.filefetch.SemanticFileMatcher.clearClassifier()
+      // Release the RAG embedder.
+      val engine = ragEngine
+      ragEngine = null
+      if (engine != null) {
+          viewModelScope.launch { engine.close() }
+      }
   }
 
   /**
@@ -170,6 +198,103 @@ open class LlmChatViewModelBase(
           )
           result.await()
       }
+  }
+
+  /**
+   * Ingests explicitly-attached files into the RAG index (chunk -> embed ->
+   * index) so later queries can be grounded in them. Call when the user sends a
+   * message carrying [files]. No-op if RAG isn't initialized or there's no
+   * extracted text. Runs in the background; safe to fire-and-forget.
+   *
+   * Strictly explicit-attachment ingestion — never a background storage scan
+   * (see /docs/PRD.md, /docs/DECISIONS.md).
+   */
+  fun ingestAttachedFiles(files: List<ChatMessageFile>) {
+    val engine = ragEngine ?: return
+    if (files.isEmpty()) return
+    viewModelScope.launch(Dispatchers.Default) {
+      files.forEachIndexed { fileIdx, file ->
+        val text = file.extractedText
+        if (text.isBlank()) return@forEachIndexed
+        // Label by the file's display name when resolvable, else a stable fallback.
+        val label = file.uris.firstOrNull()?.lastPathSegment?.substringAfterLast('/')
+          ?: "attachment-${fileIdx + 1}"
+        val n = engine.ingest(text, label)
+        Log.d(TAG, "RAG ingest '$label': $n chunks")
+      }
+    }
+  }
+
+  /**
+   * If [input] is a RAG request (quiz/summary grounded in attached notes),
+   * handles it: retrieves, generates via the resident model, publishes the typed
+   * result to [ragResponse], and renders a readable message in chat. Returns
+   * true if it handled the query (caller should NOT also run normal generation),
+   * false to fall through to normal chat.
+   */
+  fun tryHandleRagQuery(
+    model: Model,
+    input: String,
+    interactionOrigin: InteractionOrigin,
+    onDone: () -> Unit,
+  ): Boolean {
+    val engine = ragEngine ?: return false
+    val mode = engine.detectMode(input) ?: return false
+
+    viewModelScope.launch(Dispatchers.Default) {
+      setInProgress(true)
+      addMessage(model = model, message = ChatMessageLoading())
+      try {
+        val response = engine.generate(mode, input, model, this)
+        removeLastMessageIfLoading(model)
+        if (response == null) {
+          val msg = "I couldn't find anything about that in your attached notes. Try attaching the relevant document first."
+          addMessage(model, ChatMessageText(content = msg, side = ChatSide.AGENT))
+          if (interactionOrigin == InteractionOrigin.VOICE) ttsManager?.speak(msg)
+        } else {
+          _ragResponse.value = response
+          val rendered = renderRagResponseForChat(response)
+          addMessage(model, ChatMessageText(content = rendered, side = ChatSide.AGENT))
+          if (interactionOrigin == InteractionOrigin.VOICE) {
+            // Speak the summary or the first question — not the whole JSON.
+            val spoken = if (response.isQuiz) response.items.firstOrNull()?.question ?: rendered
+                         else response.summary
+            if (spoken.isNotBlank()) ttsManager?.speak(spoken)
+          }
+        }
+      } catch (e: Exception) {
+        Log.e(TAG, "RAG query failed", e)
+        removeLastMessageIfLoading(model)
+        addMessage(model, ChatMessageText(content = "Something went wrong generating from your notes.", side = ChatSide.AGENT))
+      } finally {
+        setInProgress(false)
+        onDone()
+      }
+    }
+    return true
+  }
+
+  private fun removeLastMessageIfLoading(model: Model) {
+    if (getLastMessage(model = model) is ChatMessageLoading) {
+      removeLastMessage(model = model)
+    }
+  }
+
+  /** Renders a [RagResponse] as human-readable chat text (UI panel is separate). */
+  private fun renderRagResponseForChat(
+    response: com.google.ai.edge.gallery.rag.RagResponse
+  ): String {
+    val header = if (response.sources.isNotEmpty())
+      "From your notes (${response.sources.joinToString(", ")}):\n\n" else ""
+    return if (response.isQuiz) {
+      header + response.items.mapIndexed { i, item ->
+        val opts = if (item.isMultipleChoice)
+          "\n" + item.options.joinToString("\n") { "   - $it" } else ""
+        "${i + 1}. ${item.question}$opts\n   Answer: ${item.answer}"
+      }.joinToString("\n\n")
+    } else {
+      header + response.summary
+    }
   }
 
   fun generateResponse(
