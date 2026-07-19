@@ -70,15 +70,14 @@ The goal of Phase 3 is to allow users to explicitly attach notes -> OCR -> Embed
 ### The Immediate Blocker
 Phase 3 requires a local vector database to index the documents. The roadmap originally planned to cross-compile the **Qdrant Edge Rust crate** via a JNI bridge for Android. 
 
-**Go/No-Go Decision Required**: Building a JNI bridge and cross-compiling Rust for a hackathon is extremely high risk and time-consuming. We need to decide whether to:
-1. Proceed with the Qdrant Edge Rust JNI integration.
-2. Fallback to a pure-Kotlin solution (e.g., in-memory cosine similarity, or a lightweight Kotlin vector library) to ensure we actually finish the feature before the hackathon deadline.
+**Go/No-Go Decision Finalized**: We have made the decision to **No-Go** on the Rust JNI bridge. Building a JNI bridge and cross-compiling Rust for a hackathon is extremely high risk and time-consuming. 
+Instead, we will use a **pure-Kotlin fallback** (e.g., in-memory cosine similarity array, or a lightweight Kotlin vector library) to ensure we actually finish the RAG feature before the hackathon deadline.
 
 ### Your Role (Dev C)
-As you join the team, your first priorities will be:
-1. **Familiarize**: Review `LlmChatViewModel.kt` (where inference is triggered), `VisionChatViewModel.kt` (camera handling), and `DocumentExtractor.kt` (where our text data originates).
-2. **Coordinate Data Structures**: Coordinate with Dev A and Dev B on the RAG pipeline data structures (e.g. `QuizItem` mock data).
-3. **Unblock Phase 3**: Assist with the Go/No-Go decision on the JNI bridge vs. Kotlin embedding pipeline, and begin building the backend for the vector search.
-4. **Prepare for Phase 4**: Once Phase 3 is merged, you will help tackle Phase 4 (Memory & Schedules) which involves `AlarmManager`/`WorkManager` and a local structured database.
+As you join the team, your first priority is to build Phase 3 (RAG). You are authorized to take over both Dev A and Dev B tasks for Phase 3:
+1. **Familiarize**: Review `LlmChatViewModel.kt`, `VisionChatViewModel.kt`, and `DocumentExtractor.kt`.
+2. **Build the Kotlin RAG Pipeline**: Build a simple Kotlin embedding and vector search pipeline. You can use FastEmbed or on-device embeddings, and a simple in-memory cosine similarity store.
+3. **Build the UI**: Build the Quiz/Flashcard UI screens in Compose (question card, answer reveal, right/wrong feedback).
+4. **End-to-End**: Wire it so attached notes -> embed -> index -> voice query -> retrieval -> Gemma-generated quiz/summary works!
 
 Welcome to the team! Let's build something incredible.

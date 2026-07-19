@@ -302,6 +302,19 @@ fun ChatPanel(
         modifier = Modifier.weight(1f),
       ) {
         val cdChatPanel = stringResource(R.string.cd_chat_panel)
+        // Hoisted out of itemsIndexed: these depend only on task.id, so computing them
+        // per-row on every recomposition was wasted work. Remembered per task.
+        val customColors = MaterialTheme.customColors
+        val userBubbleColor = remember(task.id, customColors) {
+          when (task.id) {
+            BuiltInTaskId.LLM_CHAT ->
+              customColors.taskBgGradientColors.getOrNull(2)?.getOrNull(0)?.copy(alpha = 0.25f) ?: Color(0xFF64B5F6)
+            BuiltInTaskId.VISION ->
+              customColors.taskBgGradientColors.getOrNull(0)?.getOrNull(0)?.copy(alpha = 0.25f) ?: Color(0xFFE57373)
+            else -> customColors.userBubbleBgColor
+          }
+        }
+        val agentBubbleColor = customColors.agentBubbleBgColor
         // LazyColumn only composes visible items — eliminates the O(n) layout cost
         // of the previous Column+verticalScroll approach for long chat sessions.
         LazyColumn(
@@ -315,17 +328,13 @@ fun ChatPanel(
           itemsIndexed(messages, key = { index, _ -> index }) { index, message ->
             val imageHistoryCurIndex = remember { mutableIntStateOf(0) }
             var hAlign: Alignment.Horizontal = Alignment.End
-            var backgroundColor: Color = when (task.id) {
-              BuiltInTaskId.LLM_CHAT -> MaterialTheme.customColors.taskBgGradientColors.getOrNull(2)?.getOrNull(0)?.copy(alpha = 0.25f) ?: Color(0xFF64B5F6)
-              BuiltInTaskId.VISION -> MaterialTheme.customColors.taskBgGradientColors.getOrNull(0)?.getOrNull(0)?.copy(alpha = 0.25f) ?: Color(0xFFE57373)
-              else -> MaterialTheme.customColors.userBubbleBgColor
-            }
+            var backgroundColor: Color = userBubbleColor
             var hardCornerAtLeftOrRight = false
             var extraPaddingStart = 48.dp
             var extraPaddingEnd = 0.dp
             if (message.side == ChatSide.AGENT) {
               hAlign = Alignment.Start
-              backgroundColor = MaterialTheme.customColors.agentBubbleBgColor
+              backgroundColor = agentBubbleColor
               hardCornerAtLeftOrRight = true
               extraPaddingStart = 0.dp
               if (

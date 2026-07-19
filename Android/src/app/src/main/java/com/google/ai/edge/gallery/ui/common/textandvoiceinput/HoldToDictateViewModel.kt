@@ -22,15 +22,12 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
 private const val TAG = "AGHTD"
 
@@ -43,7 +40,7 @@ data class HoldToDictateUiState(val recognizing: Boolean = false, val recognized
 @HiltViewModel
 class HoldToDictateViewModel @Inject constructor(@ApplicationContext private val context: Context) :
   ViewModel(), RecognitionListener {
-  protected val _uiState = MutableStateFlow(HoldToDictateUiState())
+  private val _uiState = MutableStateFlow(HoldToDictateUiState())
   val uiState = _uiState.asStateFlow()
 
   private val speechRecognizer: SpeechRecognizer
@@ -78,11 +75,10 @@ class HoldToDictateViewModel @Inject constructor(@ApplicationContext private val
   }
 
   fun stopSpeechRecognition() {
-    viewModelScope.launch {
-      delay(500)
-      speechRecognizer.stopListening()
-      setRecognizing(recognizing = false)
-    }
+    // stopListening() signals end-of-speech; the recognizer still delivers final onResults.
+    // No artificial delay — it only added latency and stacked coroutines on rapid press/release.
+    speechRecognizer.stopListening()
+    setRecognizing(recognizing = false)
   }
 
   override fun onCleared() {
@@ -91,6 +87,9 @@ class HoldToDictateViewModel @Inject constructor(@ApplicationContext private val
   }
 
   fun cancelSpeechRecognition() {
+    // Actually stop the mic — previously this only flipped UI state, leaving the
+    // recognizer (and microphone) live after the user dragged off the button.
+    speechRecognizer.cancel()
     setRecognizing(recognizing = false)
   }
 
@@ -115,6 +114,10 @@ class HoldToDictateViewModel @Inject constructor(@ApplicationContext private val
   override fun onEndOfSpeech() {}
 
   override fun onError(error: Int) {
+    // Notify the caller with empty text so a PTT flow waiting on onDone doesn't hang.
+    // Empty text is a no-op for callers (see handleStartSpeech in MessageInputText).
+    setRecognizedText("")
+    onRecognitionDone?.invoke("")
     setRecognizing(recognizing = false)
   }
 

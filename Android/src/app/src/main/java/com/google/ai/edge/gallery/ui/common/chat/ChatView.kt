@@ -184,14 +184,7 @@ fun ChatView(
   val handleNavigateUp = {
     navigatingUp = true
     navigateUp()
-
-    // clean up all models.
-    scope.launch(Dispatchers.Default) {
-      // For performance reasons based on user request, the model is kept loaded.
-      // for (model in task.models) {
-      //   modelManagerViewModel.cleanupModel(context = context, task = task, model = model)
-      // }
-    }
+    // Model is intentionally kept resident on navigate-up (per product decision) — no cleanup here.
   }
 
   // Initialize model when model/download state changes.
@@ -415,11 +408,6 @@ fun ChatView(
                         voiceButton = { composableBelowMessageList(selectedModel) },
                         onSendVoiceMessage = { model, msgs -> onSendVoiceMessage(model, msgs) },
                       )
-                      val initializationStatus = modelManagerUiState.modelInitializationStatus[selectedModel.name]
-                      val initializing = initializationStatus?.status == ModelInitializationStatusType.INITIALIZING
-                      if (initializing) {
-                        // Spinner removed as requested
-                      }
                     }
                   // Model download
                   false ->

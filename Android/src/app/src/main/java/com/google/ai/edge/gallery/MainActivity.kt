@@ -72,14 +72,16 @@ class MainActivity : ComponentActivity() {
     // and forces the app to start cleanly on the Home Screen after an OS kill.
     super.onCreate(null)
 
-    // Debug: Dump all intent extras to see what FCM unloads
-    intent.extras?.let { extras ->
-      for (key in extras.keySet()) {
-        Log.d(TAG, "onCreate Extra -> Key: $key, Value: ${extras.get(key)}")
+    // Dump intent extras only in debug builds — these can contain sensitive values.
+    if (BuildConfig.DEBUG) {
+      intent.extras?.let { extras ->
+        for (key in extras.keySet()) {
+          Log.d(TAG, "onCreate Extra -> Key: $key, Value: ${extras.get(key)}")
+        }
       }
     }
 
-    // Convert FCM Console data extras to intent data for GalleryNavGraph to pick up
+    // Convert deeplink data extras to intent data for GalleryNavGraph to pick up
     intent.getStringExtra("deeplink")?.let { link ->
       Log.d(TAG, "onCreate: Found deeplink extra: $link")
       if (link.startsWith("http://") || link.startsWith("https://")) {
@@ -186,10 +188,12 @@ class MainActivity : ComponentActivity() {
     super.onNewIntent(intent)
     setIntent(intent)
 
-    // Debug: Dump all intent extras to see what FCM unloads
-    intent.extras?.let { extras ->
-      for (key in extras.keySet()) {
-        Log.d(TAG, "onNewIntent Extra -> Key: $key, Value: ${extras.get(key)}")
+    // Dump intent extras only in debug builds — these can contain sensitive values.
+    if (BuildConfig.DEBUG) {
+      intent.extras?.let { extras ->
+        for (key in extras.keySet()) {
+          Log.d(TAG, "onNewIntent Extra -> Key: $key, Value: ${extras.get(key)}")
+        }
       }
     }
 

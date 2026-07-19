@@ -7,7 +7,18 @@ import java.util.Locale
 
 class TtsManager(context: Context) : TextToSpeech.OnInitListener {
     private var tts: TextToSpeech? = null
+    @Volatile
     private var isInitialized = false
+
+    companion object {
+        // Precompiled once — stripMarkdown runs on every speak() call (a per-utterance hot path).
+        private val RE_BOLD = Regex("\\*\\*|__")
+        private val RE_ITALIC = Regex("\\*|_")
+        private val RE_HEADER = Regex("###|##|#")
+        private val RE_CODE = Regex("`")
+        private val RE_STRIKE = Regex("~~")
+        private val RE_LINK = Regex("\\[(.*?)\\]\\(.*?\\)")
+    }
 
     init {
         tts = TextToSpeech(context, this)
@@ -68,12 +79,12 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
 
     private fun stripMarkdown(text: String): String {
         return text
-            .replace(Regex("\\*\\*|__"), "") // Bold
-            .replace(Regex("\\*|_"), "") // Italic
-            .replace(Regex("###|##|#"), "") // Headers
-            .replace(Regex("`"), "") // Inline code
-            .replace(Regex("~~"), "") // Strikethrough
-            .replace(Regex("\\[(.*?)\\]\\(.*?\\)"), "$1") // Links: [text](url) -> text
+            .replace(RE_BOLD, "") // Bold
+            .replace(RE_ITALIC, "") // Italic
+            .replace(RE_HEADER, "") // Headers
+            .replace(RE_CODE, "") // Inline code
+            .replace(RE_STRIKE, "") // Strikethrough
+            .replace(RE_LINK, "$1") // Links: [text](url) -> text
     }
 
     fun speak(text: String, queueMode: Int = TextToSpeech.QUEUE_FLUSH) {
@@ -90,7 +101,9 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
     }
 
     fun shutdown() {
+        isInitialized = false
         tts?.stop()
         tts?.shutdown()
+        tts = null
     }
 }

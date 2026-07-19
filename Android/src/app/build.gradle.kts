@@ -109,7 +109,6 @@ dependencies {
   implementation(libs.play.services.oss.licenses)
   implementation(platform(libs.firebase.bom))
   implementation(libs.firebase.analytics)
-  implementation(libs.firebase.messaging)
   implementation(libs.androidx.exifinterface)
   implementation(libs.moshi.kotlin)
   kapt(libs.hilt.android.compiler)
@@ -124,9 +123,6 @@ dependencies {
   ksp(libs.moshi.kotlin.codegen)
   implementation(libs.mlkit.genai.prompt)
   implementation(libs.mlkit.text.recognition)   // OCR — Phase 2 Dev B
-  implementation(libs.mcp.kotlin.sdk)
-  implementation(libs.ktor.client.android)
-  implementation(libs.ktor.client.core)
 }
 
 protobuf {

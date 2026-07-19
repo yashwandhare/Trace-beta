@@ -41,5 +41,6 @@ object ScreenExplainManager {
         }
     }
 
+    @Volatile
     var isServiceRunning: Boolean = false
 }
