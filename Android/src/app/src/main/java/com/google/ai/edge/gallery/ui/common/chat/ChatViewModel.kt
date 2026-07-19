@@ -59,7 +59,7 @@ data class ChatUiState(
   val preparing: Boolean = false,
 
   /** A map of model names to lists of chat messages. */
-  val messagesByModel: Map<String, MutableList<ChatMessage>> = mapOf(),
+  val messagesByModel: Map<String, List<ChatMessage>> = mapOf(),
 
   /** A map of model names to the currently streaming chat message. */
   val streamingMessagesByModel: Map<String, ChatMessage> = mapOf(),
@@ -212,9 +212,11 @@ abstract class ChatViewModel(val userDataDataStore: DataStore<UserData>? = null)
     if (newMessages.size > 0) {
       val lastMessage = newMessages.last()
       if (lastMessage is ChatMessageText) {
-        lastMessage.llmBenchmarkResult = llmBenchmarkResult
+        // Build a NEW instance instead of mutating in place — a same-reference item can be
+        // skipped by Compose recomposition, so the benchmark result wouldn't render.
+        val updated = lastMessage.clone().apply { this.llmBenchmarkResult = llmBenchmarkResult }
         newMessages.removeAt(newMessages.size - 1)
-        newMessages.add(lastMessage)
+        newMessages.add(updated)
       }
     }
     newMessagesByModel[model.name] = newMessages
