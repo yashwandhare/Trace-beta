@@ -87,3 +87,30 @@ Format:
   - `LazyColumn` migration removes the `dynamicBottomPadding` "pin last user message to top" behaviour. Scroll-to-bottom on new message still works via `animateScrollToItem`. If UX team needs the pin-to-top behaviour restored, it requires a `LazyListState`-based implementation.
   - `IntentRouter.SCREEN_EXPLAIN` intent type added but not yet wired to any screen-capture handler (Phase 3 RAG work).
 - Benchmark numbers: Not re-run. Expected first-token-latency improvement ≥500ms from delay removal alone.
+
+---
+
+## 2026-07-19 — Dev C2 — Pre-Phase 3 cleanup & hardening
+Scoped stabilization pass on `dev-b` before Phase 3 (RAG) begins, so Dev C1 inherits a clean tree. Five commits, one per workstream; each compile-verified. No merge to `main`.
+
+- Did:
+  - **WS1 — correctness bugs:**
+    - `VoiceManager`: marked `isRecording` `@Volatile`; recreate `AudioRecord` after `release()` instead of leaving the lazy instance permanently dead (mic was dead after first teardown).
+    - `TtsManager`: precompiled the 6 markdown-strip regexes (were rebuilt on every `speak()`); reset state in `shutdown()` so a post-shutdown `speak()` can't hit a dead engine.
+    - `HoldToDictateViewModel`: removed the blind `delay(500)` before `stopListening()`; actually `cancel()` the recognizer on gesture-cancel (mic-leak fix); fire `onDone("")` on error so PTT callers don't hang.
+    - `ScreenCaptureService`: run ImageReader frame decode on a background `HandlerThread` instead of the main thread (~5MB bitmap copy was janking the UI); guarded `latestBitmap.copy` against the `onDestroy` recycle race; quit the reader thread on destroy.
+    - `ScreenExplainManager`: `isServiceRunning` `@Volatile`.
+    - `MessageInputText`: unified the two divergent intent-dispatch sites (send button + PTT) into one remembered `IntentRouter` + dispatch helper — fixes typed LLM_CHAT messages losing `InteractionOrigin` (and thus TTS/speak behavior diverging between voice and text); surface image-limit-exceeded for all model types, not just AiCore.
+    - `ChatPanel`: hoisted per-row task-color lookups out of `itemsIndexed`.
+    - `VisionCameraScreen`: write recorded frames off the main thread via a thread-safe list, cap at 100 frames, publish count on main thread, recycle frames on dispose (unbounded full-size bitmap accumulation → OOM fix).
+    - `LlmChatScreen`: handle unknown `taskId` instead of null-asserting (`!!`).
+  - **WS2 — perf:** `updateLastTextMessageLlmBenchmarkResult` now builds a new `ChatMessageText` via `clone()` instead of mutating in place (same-reference item was skipped by recomposition, benchmark result not rendering); exposed `messagesByModel` as `Map<String, List<...>>` (was `MutableList`) to remove an aliasing footgun. Most other WS2 wins landed in WS1 (regex precompile, per-tap router construction, per-row color lookups, Vision state churn).
+  - **WS3 — dead code (~1040 lines):** deleted grep-confirmed unreferenced files — `NewReleaseNotification.kt`, `MobileActionsChallengeDialog.kt`, `SteadinessMonitor.kt`, `OcrTestRunner.kt`, the dead PTT UI subsystem (`PttOverlay.kt` + `PushToTalkButton.kt` — never invoked; PTT lives in `MessageInputText`), and the stray `worker/AndroidManifest.xml`. Removed the dead `LlmAskImage/LlmAskAudio` screens + view-models, the unused `ALLOWLIST_BASE_URL` const + its dead `getAllowlistUrl()` helper, dead in-file blocks in `ChatView`, and stale PTT imports/locals in `LlmChatTaskModule`. Gated `MainActivity`'s intent-extra debug dumps behind `BuildConfig.DEBUG` (was logging potentially sensitive extras in release).
+  - **WS4 — branding:** homescreen greeting `"Welcome Kazuto"` (leftover dev name) → `"Welcome to Trace"`. No package rename (deliberately deferred).
+  - **WS5 — deps/manifest:** removed verified-unused deps `firebase-messaging`, `mcp-kotlin-sdk`, `ktor-client-android/core`; deleted `FcmMessagingService.kt` + its manifest `<service>`, the FCM notification-channel meta, and dead permissions `c2dm.RECEIVE`, `READ_GSERVICES`, `GET_ACCOUNTS`, `READ_CALENDAR`. Kept Firebase Analytics (degrades to null, no `google-services.json`) and the `notifications/` receivers (live — Phase 4 Schedules foundation).
+- Broken/open (flagged, NOT changed — need owner/Dev A):
+  - **Model config:** allowlist ships Gemma at temperature 1.0 / maxTokens 4096; `ARCHITECTURE.md` recommends temp 0.4-0.5 / maxTokens 512-768 for this latency-sensitive voice use case. Left for Dev A (model/runtime lane) — needs real-device benchmarking before changing.
+  - **LLM_ASK constants:** `LLM_ASK_IMAGE`/`LLM_ASK_AUDIO` task-id constants still thread through `ModelManagerViewModel` capability/allowlist logic (Dev A's core lane). Dead screens/VMs removed; constants left for Dev A to unpick safely.
+  - **READ_CALENDAR:** removed (only `java.util.Calendar` used, no provider access). Phase 4 Schedules may need to re-add it.
+  - All changes need real-device validation (TTS timing, MediaProjection lifecycle, Vision recording, PTT).
+- Benchmark numbers: `:app:compileDebugKotlin` clean each workstream; `:app:assembleDebug` BUILD SUCCESSFUL. Debug APK ~198.99MB (essentially unchanged — heavy deps are ML Kit/LiteRT/native libs; the removed messaging/ktor/mcp deps were small/transitively-shared. The win is correctness + reduced permission/attack surface, not size).
