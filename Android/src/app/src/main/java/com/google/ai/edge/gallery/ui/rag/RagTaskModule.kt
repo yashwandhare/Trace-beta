@@ -90,6 +90,7 @@ class RagTask @Inject constructor() : CustomTask {
   override fun MainScreen(data: Any) {
     val myData = data as CustomTaskDataForBuiltinTask
     RagScreen(
+      task = task,
       modelManagerViewModel = myData.modelManagerViewModel,
       onNavUp = myData.onNavUp,
     )
