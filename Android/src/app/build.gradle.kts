@@ -123,6 +123,7 @@ dependencies {
   ksp(libs.moshi.kotlin.codegen)
   implementation(libs.mlkit.genai.prompt)
   implementation(libs.mlkit.text.recognition)   // OCR — Phase 2 Dev B
+  implementation(libs.mediapipe.tasks.text)      // TextEmbedder — Phase 3 RAG embeddings
 }
 
 protobuf {
