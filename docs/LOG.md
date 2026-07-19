@@ -164,3 +164,14 @@ Pulled Dev C2's Phase 3 UI (chat-shaped Notes screen, interactive quiz cards, mo
   - Vision→RAG ingestion (scanned notes into the shared index) still a candidate follow-up.
   - Firebase Analytics + INTERNET perm still present from the fork — deferred offline-hardening pass.
 - Benchmark numbers: `:app:assembleDebug` BUILD SUCCESSFUL in 26s. Debug APK ~220MB, copied to project root.
+## 2026-07-19 — Dev C1 — Phase 3 polish + UI consistency (pre-Phase 4)
+Device testing of the conversational Notes module surfaced RAG quality and consistency gaps. Fixed grounding, added Notes history, unified the input UI, restyled the app, and defaulted the model to CPU. All offline; work on dev-a.
+- RAG grounding: topic-less Summarize/Quiz no longer built off an arbitrary prefix. New `VectorStore.coverageChunks` round-robins across every source (ordered by position) for whole-note coverage; `RagEngine.generate` routes on topic presence (blank → coverage; named topic → relevance retrieval with topK 5→8, minScore 0.25→0.15 tuned for the weak USE encoder, falling back to coverage). Sampled/coverage chunks now score 0f, not a fake 1.0.
+- Sources: now a collapsible dropdown (reuses `ui/common/Accordions`), collapsed by default, per assistant turn.
+- Notes history: `RagViewModel` persists conversations to the proto `DataStore<UserData>` under task_id "rag" (RagMessage JSON-encoded into `ChatMessageProto` — no schema change), auto-saving after each turn. Same right-side `ModalNavigationDrawer` + `ChatHistorySideSheetContent` as AI Chat; New/History top-bar actions. Loading restores the transcript (re-attach a note to keep querying — in-memory index isn't persisted).
+- Unified input: new `TraceChatInput` shared component (bordered rounded container matching AI Chat, inline send, attach + leadingContent/quickActions slots). Notes adopted it; chat's heavy `MessageInputText` (camera/intent-routing/skills/PTT) stays but the shared shape aligns the look.
+- Docs: `.md`/`.txt` now selectable (broadened picker MIME incl. octet-stream + extension sniff), `.html` supported with tag-stripping in `DocumentExtractor`. Chat attach picker broadened to match.
+- Theming: black & white homescreen (pure black dark / white light, derived from the active scheme); task palette softened via a `pastel()` helper (gentle desaturate + lighten).
+- Model config: default accelerator now CPU (`model_allowlist.json` "cpu,gpu"; `Consts.DEFAULT_ACCELERATORS`/`DEFAULT_VISION_ACCELERATOR` CPU-first). GPU still selectable.
+- Broken/open: whole batch not yet device-tested (RAG retrieval quality on real multi-page notes, history round-trip, pastel palette on-device, CPU inference latency). Vision text-input unification deferred (Vision is camera-only). Phase 4 (Memory & Schedules) next.
+- Benchmark numbers: `:app:assembleDebug` BUILD SUCCESSFUL. Debug APK ~220MB, copied to project root.
