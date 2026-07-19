@@ -32,6 +32,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import com.google.ai.edge.gallery.proto.Theme
@@ -144,6 +145,25 @@ data class CustomColors(
 
 val LocalCustomColors = staticCompositionLocalOf { CustomColors() }
 
+/**
+ * Softens a vivid brand color toward pastel: slightly desaturates and blends a
+ * touch toward white. Applied uniformly to the task gradient/icon palette so the
+ * home tiles read calmer and more consistent without hand-tuning each hex.
+ * Keep the shifts small — this is a gentle mute, not a redesign.
+ */
+private fun Color.pastel(desaturate: Float = 0.12f, lighten: Float = 0.08f): Color {
+  val hsv = FloatArray(3)
+  android.graphics.Color.colorToHSV(this.toArgb(), hsv)
+  hsv[1] = (hsv[1] * (1f - desaturate)).coerceIn(0f, 1f)
+  val muted = Color(android.graphics.Color.HSVToColor(hsv))
+  return androidx.compose.ui.graphics.lerp(muted, Color.White, lighten)
+}
+
+private fun List<Color>.pastel(): List<Color> = map { it.pastel() }
+
+@JvmName("pastelNested")
+private fun List<List<Color>>.pastel(): List<List<Color>> = map { pair -> pair.map { it.pastel() } }
+
 val lightCustomColors =
   CustomColors(
     appTitleGradientColors = listOf(Color(0xFF85B1F8), Color(0xFF3174F1)),
@@ -170,7 +190,7 @@ val lightCustomColors =
         listOf(Color(0xFF669DF6), Color(0xFF3174F1)),
         // yellow
         listOf(Color(0xFFFDD45D), Color(0xFFCAA12A)),
-      ),
+      ).pastel(),
     taskIconColors =
       listOf(
         // red.
@@ -181,7 +201,7 @@ val lightCustomColors =
         Color(0xFF3174F1),
         // yellow
         Color(0xFFCAA12A),
-      ),
+      ).pastel(),
     taskIconShapeBgColor = Color.White,
     homeBottomGradient = listOf(Color(0x00F8F9FF), Color(0xffFFEFC9)),
     agentBubbleBgColor = Color(0xFFe9eef6),
@@ -248,7 +268,7 @@ val darkCustomColors =
         listOf(Color(0xFF669DF6), Color(0xFF3174F1)),
         // yellow
         listOf(Color(0xFFFDD45D), Color(0xFFCAA12A)),
-      ),
+      ).pastel(),
     taskIconColors =
       listOf(
         // red.
@@ -259,7 +279,7 @@ val darkCustomColors =
         Color(0xFF669DF6),
         // yellow
         Color(0xFFCAA12A),
-      ),
+      ).pastel(),
     taskIconShapeBgColor = Color(0xFF202124),
     homeBottomGradient = listOf(Color(0x00F8F9FF), Color(0x1AF6AD01)),
     agentBubbleBgColor = Color(0xFF1b1c1d),
