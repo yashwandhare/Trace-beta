@@ -151,3 +151,27 @@ Product calls confirmed with owner (see new `/DECISIONS.md` entry): web search R
 - Benchmark numbers: `:app:assembleDebug` BUILD SUCCESSFUL. Debug APK ~221MB at project root.
 
 
+## 2026-07-19 — Dev C1 — Phase 3 (RAG) — conversational Notes redesign + phase wrap-up
+Pulled Dev C2's Phase 3 UI (chat-shaped Notes screen, interactive quiz cards, model-init fix on the legacy nav path) from `main` into `dev-a`. Device testing showed the layout needed work; this pass reworks it and closes Phase 3.
+- Did:
+  - **Conversational Notes screen** (`ui/rag/RagScreen.kt`): rebuilt as a real chat. The transcript (user turns, assistant answers, quiz turns) fills the scroll area and auto-scrolls to newest; a compact bottom bar holds attached-note chips, a rounded text field, a send button, and small Quiz me / Summarize quick-action chips. The knowledge-scope toggle moved to the top bar (icon + label) to reclaim the vertical space the old two-full-width-buttons + topic field + filter-chip-rows block wasted.
+  - **Grounded follow-up (ASK mode):** added `RagMode.ASK` (`rag/RagGenerator.kt` + `rag/RagEngine.kt`) — a conversational, notes-grounded answer. Sending from the text field routes through `RagGenerator.detectMode` first (so "quiz me" / "summarize my notes" still trigger those modes) and otherwise answers as a follow-up. A summary now flows into an ongoing back-and-forth instead of dead-ending.
+  - **Conversation state** (`ui/rag/RagViewModel.kt`): replaced the single `response: RagResponse?` with a `messages: List<RagMessage>` transcript (`UserMessage` / `AssistantText` / `AssistantQuiz`). Three entry points — `ask` / `quiz` / `summarize` — share the model-ready wait + empty-response guard C2 added.
+  - **Anki-style MCQ:** quiz cards are now interactive multiple-choice — tap an option to lock it, the correct option turns green and a wrong pick turns red (auto-graded, no manual Got it/Missed). Flashcard items (no options) keep tap-to-flip. Citations render per assistant turn.
+  - **Phase 3 marked complete** in `/TODO.md`; Phase 4 (Memory & Schedules) promoted to the next phase.
+- Broken/open:
+  - Real-device validation of this redesign still pending (retrieval quality, quiz-JSON reliability, follow-up coherence across turns, airplane-mode pass).
+  - Vision→RAG ingestion (scanned notes into the shared index) still a candidate follow-up.
+  - Firebase Analytics + INTERNET perm still present from the fork — deferred offline-hardening pass.
+- Benchmark numbers: `:app:assembleDebug` BUILD SUCCESSFUL in 26s. Debug APK ~220MB, copied to project root.
+## 2026-07-19 — Dev C1 — Phase 3 polish + UI consistency (pre-Phase 4)
+Device testing of the conversational Notes module surfaced RAG quality and consistency gaps. Fixed grounding, added Notes history, unified the input UI, restyled the app, and defaulted the model to CPU. All offline; work on dev-a.
+- RAG grounding: topic-less Summarize/Quiz no longer built off an arbitrary prefix. New `VectorStore.coverageChunks` round-robins across every source (ordered by position) for whole-note coverage; `RagEngine.generate` routes on topic presence (blank → coverage; named topic → relevance retrieval with topK 5→8, minScore 0.25→0.15 tuned for the weak USE encoder, falling back to coverage). Sampled/coverage chunks now score 0f, not a fake 1.0.
+- Sources: now a collapsible dropdown (reuses `ui/common/Accordions`), collapsed by default, per assistant turn.
+- Notes history: `RagViewModel` persists conversations to the proto `DataStore<UserData>` under task_id "rag" (RagMessage JSON-encoded into `ChatMessageProto` — no schema change), auto-saving after each turn. Same right-side `ModalNavigationDrawer` + `ChatHistorySideSheetContent` as AI Chat; New/History top-bar actions. Loading restores the transcript (re-attach a note to keep querying — in-memory index isn't persisted).
+- Unified input: new `TraceChatInput` shared component (bordered rounded container matching AI Chat, inline send, attach + leadingContent/quickActions slots). Notes adopted it; chat's heavy `MessageInputText` (camera/intent-routing/skills/PTT) stays but the shared shape aligns the look.
+- Docs: `.md`/`.txt` now selectable (broadened picker MIME incl. octet-stream + extension sniff), `.html` supported with tag-stripping in `DocumentExtractor`. Chat attach picker broadened to match.
+- Theming: black & white homescreen (pure black dark / white light, derived from the active scheme); task palette softened via a `pastel()` helper (gentle desaturate + lighten).
+- Model config: default accelerator now CPU (`model_allowlist.json` "cpu,gpu"; `Consts.DEFAULT_ACCELERATORS`/`DEFAULT_VISION_ACCELERATOR` CPU-first). GPU still selectable.
+- Broken/open: whole batch not yet device-tested (RAG retrieval quality on real multi-page notes, history round-trip, pastel palette on-device, CPU inference latency). Vision text-input unification deferred (Vision is camera-only). Phase 4 (Memory & Schedules) next.
+- Benchmark numbers: `:app:assembleDebug` BUILD SUCCESSFUL. Debug APK ~220MB, copied to project root.

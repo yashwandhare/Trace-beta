@@ -96,6 +96,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Brush.Companion.linearGradient
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -347,8 +348,13 @@ fun HomeScreen(
         },
         gesturesEnabled = drawerState.isOpen,
       ) {
+        // Black & white homescreen: pure black in dark themes, pure white in
+        // light — derived from the active scheme so it honors the in-app theme
+        // override, not just the system setting.
+        val homeBackground =
+          if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color.Black else Color.White
         Scaffold(
-          containerColor = MaterialTheme.colorScheme.background,
+          containerColor = homeBackground,
           topBar = {
             // Top bar animation:
             //
@@ -386,13 +392,7 @@ fun HomeScreen(
             contentAlignment = Alignment.TopCenter,
             modifier =
               Modifier.fillMaxSize()
-                .background(
-                  if (gm4) {
-                    MaterialTheme.colorScheme.surface
-                  } else {
-                    MaterialTheme.colorScheme.surfaceContainer
-                  }
-                ),
+                .background(homeBackground),
           ) {
             // Inner box to hold content.
             Box(

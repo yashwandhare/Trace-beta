@@ -22,17 +22,22 @@ class DocumentExtractor(private val context: Context) {
 
     suspend fun extract(uri: Uri): String? {
         val mimeType = context.contentResolver.getType(uri)?.lowercase() ?: ""
-        Log.d(TAG, "extract: uri=$uri mimeType=$mimeType")
+        val name = displayName(uri)?.lowercase() ?: ""
+        Log.d(TAG, "extract: uri=$uri mimeType=$mimeType name=$name")
 
         return try {
             when {
                 mimeType == "application/pdf" -> extractPdf(uri)
+                mimeType == "text/html" || name.endsWith(".html") || name.endsWith(".htm") ->
+                    extractHtml(uri)
                 mimeType.startsWith("text/") -> extractPlainText(uri)
                 mimeType == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ->
                     extractDocx(uri)
                 mimeType == "application/vnd.openxmlformats-officedocument.presentationml.presentation" ->
                     extractPptx(uri)
                 mimeType == "application/msword" -> extractPlainText(uri)
+                // Many devices report .md / .txt with no or an octet-stream MIME.
+                // The file picker may still surface them, so read as UTF-8 text.
                 else -> extractPlainText(uri)
             }
         } catch (e: Exception) {
@@ -40,6 +45,17 @@ class DocumentExtractor(private val context: Context) {
             null
         }
     }
+
+    /** Best-effort display name from the content resolver, for extension sniffing. */
+    private fun displayName(uri: Uri): String? =
+        try {
+            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (idx >= 0 && cursor.moveToFirst()) cursor.getString(idx) else null
+            } ?: uri.lastPathSegment
+        } catch (_: Exception) {
+            uri.lastPathSegment
+        }
 
     private suspend fun extractPdf(uri: Uri): String? {
         val pfd: ParcelFileDescriptor = context.contentResolver.openFileDescriptor(uri, "r")
@@ -110,6 +126,35 @@ class DocumentExtractor(private val context: Context) {
         val text = context.contentResolver.openInputStream(uri)?.use { stream ->
             stream.bufferedReader(Charsets.UTF_8).readText()
         } ?: return null
+
+        if (text.isBlank()) return null
+        return truncate(text)
+    }
+
+    /**
+     * Reads an HTML file and strips it down to visible text. Without this, raw
+     * markup (<div>, <span>, inline CSS/JS) would pollute embeddings and the
+     * grounding context. Drops <script>/<style> bodies, converts block tags to
+     * newlines, removes remaining tags, and unescapes common entities.
+     */
+    private fun extractHtml(uri: Uri): String? {
+        val html = context.contentResolver.openInputStream(uri)?.use { stream ->
+            stream.bufferedReader(Charsets.UTF_8).readText()
+        } ?: return null
+
+        val text = html
+            .replace(Regex("(?is)<(script|style)[^>]*>.*?</\\1>"), " ")
+            .replace(Regex("(?i)<(br|/p|/div|/li|/h[1-6]|/tr)[^>]*>"), "\n")
+            .replace(Regex("<[^>]+>"), " ")
+            .replace("&nbsp;", " ")
+            .replace("&amp;", "&")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", "\"")
+            .replace("&#39;", "'")
+            .replace(Regex("[ \\t]+"), " ")
+            .replace(Regex("\\n{3,}"), "\n\n")
+            .trim()
 
         if (text.isBlank()) return null
         return truncate(text)
