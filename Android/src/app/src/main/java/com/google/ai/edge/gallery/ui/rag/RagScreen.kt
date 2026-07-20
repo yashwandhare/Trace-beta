@@ -269,7 +269,11 @@ fun RagScreen(
             // ---- Conversation: fills from the top ----
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
               if (uiState.messages.isEmpty() && !uiState.generating) {
-                EmptyState(hasNotes = uiState.indexedSources.isNotEmpty(), accent = accent)
+                EmptyState(
+                  hasNotes = uiState.indexedSources.isNotEmpty(),
+                  accent = accent,
+                  onExample = { example -> if (model.instance != null) viewModel.ask(model, example) },
+                )
               } else {
                 Conversation(uiState = uiState, accent = accent)
               }
@@ -566,7 +570,7 @@ private fun Flashcard(item: QuizItem, accent: Color) {
 }
 
 @Composable
-private fun EmptyState(hasNotes: Boolean, accent: Color) {
+private fun EmptyState(hasNotes: Boolean, accent: Color, onExample: (String) -> Unit = {}) {
   Column(
     modifier = Modifier.fillMaxSize().padding(32.dp),
     horizontalAlignment = Alignment.CenterHorizontally,
@@ -590,6 +594,24 @@ private fun EmptyState(hasNotes: Boolean, accent: Color) {
       color = MaterialTheme.colorScheme.onSurfaceVariant,
       textAlign = TextAlign.Center,
     )
+    // Tappable example prompts once notes are indexed.
+    if (hasNotes) {
+      Spacer(Modifier.height(20.dp))
+      listOf("Summarize my notes", "Quiz me", "Explain the key concepts").forEach { example ->
+        Surface(
+          onClick = { onExample(example) },
+          color = MaterialTheme.colorScheme.surfaceContainerHigh,
+          shape = RoundedCornerShape(14.dp),
+          modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        ) {
+          Text(
+            example,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            style = MaterialTheme.typography.bodyMedium,
+          )
+        }
+      }
+    }
   }
 }
 

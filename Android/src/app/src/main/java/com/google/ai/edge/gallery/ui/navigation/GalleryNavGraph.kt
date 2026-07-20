@@ -85,6 +85,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val TAG = "AGGalleryNavGraph"
+private const val ROUTE_SHELL = "shell"
 private const val ROUTE_HOMESCREEN = "homepage"
 private const val ROUTE_MODEL = "route_model"
 const val ROUTE_BENCHMARK = "benchmark"
@@ -173,11 +174,22 @@ fun GalleryNavHost(
 
   NavHost(
     navController = navController,
-    startDestination = ROUTE_HOMESCREEN,
+    startDestination = ROUTE_SHELL,
     enterTransition = { EnterTransition.None },
     exitTransition = { ExitTransition.None },
   ) {
-    // Home screen.
+    // ChatGPT-style app shell — the entry point (Phase 3). Left drawer switches
+    // AI Chat / Vision / Notes in place and reaches Benchmark + Settings.
+    composable(route = ROUTE_SHELL) {
+      Box(modifier = modifier.fillMaxSize()) {
+        com.google.ai.edge.gallery.ui.shell.AppShell(
+          modelManagerViewModel = modelManagerViewModel,
+          onOpenBenchmark = { modelName -> navController.navigate("$ROUTE_BENCHMARK/$modelName") },
+        )
+      }
+    }
+
+    // Home screen (tile launcher) — kept for deep links and as a fallback route.
     composable(route = ROUTE_HOMESCREEN) {
       Box(modifier = modifier.fillMaxSize()) {
         HomeScreen(
