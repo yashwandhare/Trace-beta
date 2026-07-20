@@ -56,6 +56,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.rounded.MenuBook
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Summarize
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -100,6 +101,7 @@ import com.google.ai.edge.gallery.rag.QuizItem
 import com.google.ai.edge.gallery.ui.common.Accordions
 import com.google.ai.edge.gallery.ui.common.chat.ChatHistorySideSheetContent
 import com.google.ai.edge.gallery.ui.common.chat.TraceChatInput
+import com.google.ai.edge.gallery.ui.common.textandvoiceinput.HoldToDictateViewModel
 import com.google.ai.edge.gallery.ui.common.getTaskIconColor
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import kotlinx.coroutines.launch
@@ -171,6 +173,31 @@ fun RagScreen(
       )
     )
   }
+
+  // Voice input: reuse the app's PTT engine. Recognized text drives ask() directly
+  // (no IntentRouter), so note queries can't be hijacked into file-fetch/screen-explain.
+  val voiceViewModel: HoldToDictateViewModel = hiltViewModel()
+  val voiceUiState by voiceViewModel.uiState.collectAsState()
+  // Mirror the live transcript into the query field while listening.
+  LaunchedEffect(voiceUiState.recognizedText) {
+    if (voiceUiState.recognizing) query = voiceUiState.recognizedText
+  }
+  val startSpeech = {
+    voiceViewModel.startSpeechRecognition(
+      onDone = { text ->
+        if (text.isNotBlank() && model.instance != null) {
+          viewModel.ask(model, text.trim())
+        }
+        query = ""
+      },
+      onAmplitudeChanged = {},
+    )
+  }
+  val micPermissionLauncher =
+    rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+      if (granted) startSpeech()
+      else android.widget.Toast.makeText(context, "Microphone permission required for voice", android.widget.Toast.LENGTH_SHORT).show()
+    }
 
   // History drawer, opening from the right (RTL trick, matching AI Chat's ChatView).
   androidx.compose.runtime.CompositionLocalProvider(
@@ -262,6 +289,29 @@ fun RagScreen(
               inProgress = uiState.generating,
               showAttach = true,
               onAttach = ::launchPicker,
+              trailingAction = {
+                IconButton(
+                  onClick = {
+                    if (voiceUiState.recognizing) {
+                      voiceViewModel.stopSpeechRecognition()
+                    } else if (androidx.core.content.ContextCompat.checkSelfPermission(
+                        context, android.Manifest.permission.RECORD_AUDIO
+                      ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    ) {
+                      startSpeech()
+                    } else {
+                      micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                    }
+                  },
+                  enabled = uiState.indexedSources.isNotEmpty(),
+                ) {
+                  Icon(
+                    Icons.Rounded.Mic,
+                    contentDescription = if (voiceUiState.recognizing) "Stop listening" else "Voice input",
+                    tint = if (voiceUiState.recognizing) MaterialTheme.colorScheme.error else accent,
+                  )
+                }
+              },
               leadingContent = {
                 AttachedSourcesRow(
                   uiState = uiState,

@@ -82,6 +82,8 @@ fun TraceChatInput(
   onAttach: () -> Unit = {},
   leadingContent: (@Composable () -> Unit)? = null,
   quickActions: (@Composable () -> Unit)? = null,
+  // Rendered inside the input row, just left of the send button (e.g. a voice mic).
+  trailingAction: (@Composable () -> Unit)? = null,
 ) {
   Surface(
     color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -140,6 +142,7 @@ fun TraceChatInput(
           )
 
           val sendEnabled = canSend(value, enabled, inProgress)
+          trailingAction?.invoke()
           Box(modifier = Modifier.padding(end = 6.dp)) {
             if (showStopButton && inProgress) {
               IconButton(
