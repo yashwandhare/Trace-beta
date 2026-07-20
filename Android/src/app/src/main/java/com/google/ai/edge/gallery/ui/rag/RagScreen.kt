@@ -47,7 +47,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.rounded.AddComment
 import androidx.compose.material.icons.rounded.AutoAwesome
@@ -55,13 +54,19 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Lightbulb
+import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.MenuBook
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Summarize
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -72,8 +77,6 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
@@ -98,8 +101,10 @@ import com.google.ai.edge.gallery.rag.Citation
 import com.google.ai.edge.gallery.rag.KnowledgeScope
 import com.google.ai.edge.gallery.rag.QuizItem
 import com.google.ai.edge.gallery.ui.common.Accordions
+import com.google.ai.edge.gallery.ui.common.ModuleEmptyState
 import com.google.ai.edge.gallery.ui.common.chat.ChatHistorySideSheetContent
 import com.google.ai.edge.gallery.ui.common.chat.TraceChatInput
+import com.google.ai.edge.gallery.ui.common.textandvoiceinput.HoldToDictateViewModel
 import com.google.ai.edge.gallery.ui.common.getTaskIconColor
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import kotlinx.coroutines.launch
@@ -172,6 +177,31 @@ fun RagScreen(
     )
   }
 
+  // Voice input: reuse the app's PTT engine. Recognized text drives ask() directly
+  // (no IntentRouter), so note queries can't be hijacked into file-fetch/screen-explain.
+  val voiceViewModel: HoldToDictateViewModel = hiltViewModel()
+  val voiceUiState by voiceViewModel.uiState.collectAsState()
+  // Mirror the live transcript into the query field while listening.
+  LaunchedEffect(voiceUiState.recognizedText) {
+    if (voiceUiState.recognizing) query = voiceUiState.recognizedText
+  }
+  val startSpeech = {
+    voiceViewModel.startSpeechRecognition(
+      onDone = { text ->
+        if (text.isNotBlank() && model.instance != null) {
+          viewModel.ask(model, text.trim())
+        }
+        query = ""
+      },
+      onAmplitudeChanged = {},
+    )
+  }
+  val micPermissionLauncher =
+    rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+      if (granted) startSpeech()
+      else android.widget.Toast.makeText(context, "Microphone permission required for voice", android.widget.Toast.LENGTH_SHORT).show()
+    }
+
   // History drawer, opening from the right (RTL trick, matching AI Chat's ChatView).
   androidx.compose.runtime.CompositionLocalProvider(
     androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Rtl
@@ -201,36 +231,65 @@ fun RagScreen(
       ) {
         Scaffold(
           topBar = {
-            TopAppBar(
-              title = { Text("Notes", fontWeight = FontWeight.SemiBold) },
+            var showOverflow by remember { mutableStateOf(false) }
+            CenterAlignedTopAppBar(
+              title = {
+                Row(
+                  verticalAlignment = Alignment.CenterVertically,
+                  horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                  Icon(
+                    Icons.Rounded.MenuBook,
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(24.dp),
+                  )
+                  Text("Notes", style = MaterialTheme.typography.titleMedium, color = accent)
+                }
+              },
               navigationIcon = {
                 IconButton(onClick = onNavUp) {
-                  Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
+                  Icon(Icons.Rounded.Menu, contentDescription = "Menu")
                 }
               },
               actions = {
-                KnowledgeScopeToggle(
-                  scope = uiState.knowledgeScope,
-                  accent = accent,
-                  onToggle = {
-                    viewModel.setKnowledgeScope(
-                      if (uiState.knowledgeScope == KnowledgeScope.NOTES_ONLY) {
-                        KnowledgeScope.NOTES_AND_MODEL
-                      } else {
-                        KnowledgeScope.NOTES_ONLY
-                      }
-                    )
-                  },
-                )
                 IconButton(onClick = { viewModel.newConversation() }) {
                   Icon(Icons.Rounded.AddComment, contentDescription = "New conversation")
                 }
-                IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                  Icon(Icons.Rounded.History, contentDescription = "History")
+                IconButton(onClick = { showOverflow = true }) {
+                  Icon(Icons.Rounded.MoreVert, contentDescription = "More options")
+                }
+                DropdownMenu(expanded = showOverflow, onDismissRequest = { showOverflow = false }) {
+                  DropdownMenuItem(
+                    text = {
+                      Text(
+                        if (uiState.knowledgeScope == KnowledgeScope.NOTES_ONLY) "Notes only"
+                        else "Notes + AI"
+                      )
+                    },
+                    leadingIcon = { Icon(Icons.Rounded.Lightbulb, contentDescription = null) },
+                    onClick = {
+                      viewModel.setKnowledgeScope(
+                        if (uiState.knowledgeScope == KnowledgeScope.NOTES_ONLY) {
+                          KnowledgeScope.NOTES_AND_MODEL
+                        } else {
+                          KnowledgeScope.NOTES_ONLY
+                        }
+                      )
+                    },
+                  )
+                  DropdownMenuItem(
+                    text = { Text("History") },
+                    leadingIcon = { Icon(Icons.Rounded.History, contentDescription = null) },
+                    onClick = {
+                      showOverflow = false
+                      scope.launch { drawerState.open() }
+                    },
+                  )
                 }
               },
               colors =
-                TopAppBarDefaults.topAppBarColors(
+                TopAppBarDefaults.centerAlignedTopAppBarColors(
                   containerColor = MaterialTheme.colorScheme.surface,
                   titleContentColor = MaterialTheme.colorScheme.onSurface,
                 ),
@@ -242,7 +301,11 @@ fun RagScreen(
             // ---- Conversation: fills from the top ----
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
               if (uiState.messages.isEmpty() && !uiState.generating) {
-                EmptyState(hasNotes = uiState.indexedSources.isNotEmpty(), accent = accent)
+                EmptyState(
+                  hasNotes = uiState.indexedSources.isNotEmpty(),
+                  accent = accent,
+                  onExample = { example -> if (model.instance != null) viewModel.ask(model, example) },
+                )
               } else {
                 Conversation(uiState = uiState, accent = accent)
               }
@@ -262,6 +325,29 @@ fun RagScreen(
               inProgress = uiState.generating,
               showAttach = true,
               onAttach = ::launchPicker,
+              trailingAction = {
+                IconButton(
+                  onClick = {
+                    if (voiceUiState.recognizing) {
+                      voiceViewModel.stopSpeechRecognition()
+                    } else if (androidx.core.content.ContextCompat.checkSelfPermission(
+                        context, android.Manifest.permission.RECORD_AUDIO
+                      ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    ) {
+                      startSpeech()
+                    } else {
+                      micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                    }
+                  },
+                  enabled = uiState.indexedSources.isNotEmpty(),
+                ) {
+                  Icon(
+                    Icons.Rounded.Mic,
+                    contentDescription = if (voiceUiState.recognizing) "Stop listening" else "Voice input",
+                    tint = if (voiceUiState.recognizing) MaterialTheme.colorScheme.error else accent,
+                  )
+                }
+              },
               leadingContent = {
                 AttachedSourcesRow(
                   uiState = uiState,
@@ -516,31 +602,21 @@ private fun Flashcard(item: QuizItem, accent: Color) {
 }
 
 @Composable
-private fun EmptyState(hasNotes: Boolean, accent: Color) {
-  Column(
-    modifier = Modifier.fillMaxSize().padding(32.dp),
-    horizontalAlignment = Alignment.CenterHorizontally,
-    verticalArrangement = Arrangement.Center,
-  ) {
-    Icon(Icons.Rounded.MenuBook, contentDescription = null, tint = accent, modifier = Modifier.size(48.dp))
-    Spacer(Modifier.height(16.dp))
-    Text(
-      if (hasNotes) "Ask, quiz, or summarize" else "Study from your own notes",
-      style = MaterialTheme.typography.titleMedium,
-      fontWeight = FontWeight.Bold,
-      textAlign = TextAlign.Center,
-    )
-    Spacer(Modifier.height(8.dp))
-    Text(
+private fun EmptyState(hasNotes: Boolean, accent: Color, onExample: (String) -> Unit = {}) {
+  ModuleEmptyState(
+    icon = Icons.Rounded.MenuBook,
+    accent = accent,
+    title = if (hasNotes) "Ask, quiz, or summarize" else "Study from your own notes",
+    description =
       if (hasNotes)
         "Type a question about your notes, or tap Quiz me or Summarize. You can keep the conversation going."
       else
         "Attach a note or document below. It's indexed on-device and never leaves your phone.",
-      style = MaterialTheme.typography.bodyMedium,
-      color = MaterialTheme.colorScheme.onSurfaceVariant,
-      textAlign = TextAlign.Center,
-    )
-  }
+    suggestions =
+      if (hasNotes) listOf("Summarize my notes", "Quiz me", "Explain the key concepts")
+      else emptyList(),
+    onSuggestionClick = onExample,
+  )
 }
 
 @Composable
@@ -559,29 +635,6 @@ private fun GeneratingBubble(accent: Color) {
         Text("Thinking from your notes…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
       }
     }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Knowledge-scope toggle (top bar)
-// ---------------------------------------------------------------------------
-
-@Composable
-private fun KnowledgeScopeToggle(scope: KnowledgeScope, accent: Color, onToggle: () -> Unit) {
-  val on = scope == KnowledgeScope.NOTES_AND_MODEL
-  TextButton(onClick = onToggle) {
-    Icon(
-      Icons.Rounded.Lightbulb,
-      contentDescription = null,
-      tint = if (on) accent else MaterialTheme.colorScheme.onSurfaceVariant,
-      modifier = Modifier.size(18.dp),
-    )
-    Spacer(Modifier.width(6.dp))
-    Text(
-      if (on) "Notes + AI" else "Notes only",
-      style = MaterialTheme.typography.labelMedium,
-      color = if (on) accent else MaterialTheme.colorScheme.onSurfaceVariant,
-    )
   }
 }
 

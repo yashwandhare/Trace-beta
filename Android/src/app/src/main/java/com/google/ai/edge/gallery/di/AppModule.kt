@@ -26,6 +26,7 @@ import com.google.ai.edge.gallery.BenchmarkResultsSerializer
 import com.google.ai.edge.gallery.BuildConfig
 import com.google.ai.edge.gallery.CutoutsSerializer
 import com.google.ai.edge.gallery.GalleryLifecycleProvider
+import com.google.ai.edge.gallery.NotesIndexSerializer
 import com.google.ai.edge.gallery.SettingsSerializer
 import com.google.ai.edge.gallery.SkillsSerializer
 import com.google.ai.edge.gallery.UserDataSerializer
@@ -35,6 +36,7 @@ import com.google.ai.edge.gallery.data.DefaultDownloadRepository
 import com.google.ai.edge.gallery.data.DownloadRepository
 import com.google.ai.edge.gallery.proto.BenchmarkResults
 import com.google.ai.edge.gallery.proto.CutoutCollection
+import com.google.ai.edge.gallery.proto.NotesIndex
 import com.google.ai.edge.gallery.proto.Settings
 import com.google.ai.edge.gallery.proto.Skills
 import com.google.ai.edge.gallery.proto.UserData
@@ -121,6 +123,27 @@ internal object AppModule {
     return DataStoreFactory.create(
       serializer = userDataSerializer,
       produceFile = { context.dataStoreFile("user_data.pb") },
+    )
+  }
+
+  // Provides the NotesIndexSerializer
+  @Provides
+  @Singleton
+  fun provideNotesIndexSerializer(): Serializer<NotesIndex> {
+    return NotesIndexSerializer
+  }
+
+  // Provides DataStore<NotesIndex> — persisted Notes/RAG sources (extracted text,
+  // re-embedded on launch).
+  @Provides
+  @Singleton
+  fun provideNotesIndexDataStore(
+    @ApplicationContext context: Context,
+    notesIndexSerializer: Serializer<NotesIndex>,
+  ): DataStore<NotesIndex> {
+    return DataStoreFactory.create(
+      serializer = notesIndexSerializer,
+      produceFile = { context.dataStoreFile("notes_index.pb") },
     )
   }
 

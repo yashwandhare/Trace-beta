@@ -61,42 +61,35 @@ Standardize on `MessageInputText` as the single input across all 3 modules; diff
   (`LlmChatTaskModule.kt:154`). No behavior change. DONE.
 - ☑ **Vision**: document attach removed — `ChatViewWrapper` call in `VisionCameraScreen.kt:124`
   passes `showImagePicker=true` and leaves `showAttachDocument` default false (item 5). DONE.
-- ☐ **Notes**: NOT DONE. Replace the bespoke `TraceChatInput` in `RagScreen.kt` (the block at
-  ~line 251, `// ---- Compact input bar (shared TraceChatInput) ----`) with `MessageInputText`:
-    - Pass `task` (Notes task via `modelManagerViewModel.getTaskById(BuiltInTaskId.RAG)`),
-      `showAttachDocument=true`, `showImagePicker=false`, `showAudioPicker=false` (voice PTT is
-      built into MessageInputText, so it comes for free — item 2's "add voice to Notes").
-    - `leadingSendAction = { }` → a circular "Quiz me" icon button (item 2: quiz icon in a circle
-      left of send). Wire onClick → `viewModel.quiz(model, query)`.
-    - Bridge `onSendMessage: (List<ChatMessage>)`: extract `ChatMessageText.content` →
-      `viewModel.ask(model, text)`; extract `ChatMessageFile`s → `viewModel.ingestDocument(...)`
-      (Notes ingests on attach, so attaching a doc should call ingest, not queue it as a message).
-    - Keep Notes' own transcript rendering (`Conversation`, quiz cards) and the attached-source
-      chips + Summarize action somewhere (they were in `TraceChatInput`'s slots — reuse
-      `AttachedSourcesRow`/`QuizSummarizeActions` above the input, or fold into leadingSendAction).
-    - CAUTION: `MessageInputText` routes sends through `IntentRouter` (`dispatchIntent`, line ~355)
-      which can hijack "file fetch"/"screen explain" phrasings. Normal note queries fall through
-      to `LLM_CHAT → onSendMessage`, so it's usually fine, but verify on device. If it's a problem,
-      keep `TraceChatInput` for Notes and just add a voice mic + Quiz-left-of-send to it instead —
-      simpler and avoids the IntentRouter. **This fallback is acceptable.**
-  - ☐ Build green; commit.
+- ☑ **Notes**: DONE via the sanctioned fallback (owner decision) — kept the bespoke
+  `TraceChatInput` instead of swapping to `MessageInputText`, to avoid IntentRouter hijacking
+  note queries and the unused camera/image machinery. Added a `trailingAction` slot to
+  `TraceChatInput`; wired a voice mic (HoldToDictateViewModel PTT) that calls `viewModel.ask()`
+  directly (no IntentRouter). Quiz-me was already present via `QuizSummarizeActions`. Commit `f792029`.
+  - ☑ Build green; committed.
 
 **C2 START HERE:** finish the Notes bullet above, then continue to Phase 2.
 
-### Phase 2 — Persistent Notes attachments  ☐
+### Phase 2 — Persistent Notes attachments  ☑
 Notes attachments survive app restart (save extracted text, re-embed on launch).
-- ☐ New `proto/notes_index.proto`: `NoteSourceProto { source_label, extracted_text,
-  ingested_at_ms }`, `NotesIndex { repeated NoteSourceProto sources }`. Serializer + a
-  `DataStore<NotesIndex>` provider in `di/AppModule.kt` (mirror the UserData one).
-- ☐ `RagRepository`/`RagEngine`: on `ingest`, persist source text; on `removeSource`/`clearIndex`,
-  update the store. Inject the DataStore (RagEngine is an app singleton via `RagDiModule`).
-- ☐ `warmUp()`: on first RagEngine/RagViewModel init, load persisted sources → re-chunk+re-embed
-  into `VectorStore` on a background dispatcher (~1-2s). `indexedSources` then repopulates so the
-  chips reappear. Show existing "Indexing…" state if a query lands first.
-- ☐ Build green; commit.
+- ☑ New `proto/notes_index.proto`: `NoteSourceProto { source_label, extracted_text,
+  ingested_at_ms }`, `NotesIndex { repeated NoteSourceProto sources }`. `NotesIndexSerializer` +
+  two `DataStore<NotesIndex>` providers in `di/AppModule.kt` (notes_index.pb).
+- ☑ `RagEngine`: takes the DataStore; `ingest` persists source text; `forgetSource`/
+  `forgetAllSources` prune it; all best-effort. Also removed the dead ViewModel-local RagEngine
+  fallback in `LlmChatViewModel` (the shared singleton is always injected).
+- ☑ `warmUp()`: on first `RagViewModel` init, load persisted sources → re-chunk+re-embed into
+  `VectorStore` on a background dispatcher; `indexedSources` repopulates so chips reappear.
+- ☑ Build green (`assembleDebug`); committed `4b801a6`.
 
-### Phase 3 — App shell + left hamburger drawer + shared top bar  ☐  (largest)
-AI Chat becomes the home surface; a left drawer switches modules; one shared top bar.
+### Phase 3 — App shell + left hamburger drawer + shared top bar  ◐  (done via low-risk variant)
+AI Chat becomes the home surface; a left drawer switches modules.
+**Built (`43ea005`, NOT device-tested):** `ui/shell/AppShell.kt` owns a LEFT `ModalNavigationDrawer`
+switching AI Chat / Vision / Notes in place + Benchmark/Settings; `startDestination` → `ROUTE_SHELL`.
+Chosen variant: each module renders through its OWN `MainScreen` (existing top bar + right history
+drawer reused unchanged) rather than suppressing internal drawers — so the ChatView/RagScreen/Vision
+`useExternalDrawer`/`hideOwnTopBar` refactors below were NOT needed. Module back opens the switcher.
+`force=true` re-init on switch handles the capability-flag gotcha.
 - ☐ `ui/shell/AppShell.kt`: owns a LEFT `ModalNavigationDrawer`; state `activeModule`
   (AI_CHAT default / VISION / NOTES); renders the active module inline (switch in place, no nav).
 - ☐ `ui/shell/AppDrawer.kt` content top→bottom: "Trace" header → **modules** (vertical,
@@ -114,12 +107,13 @@ AI Chat becomes the home surface; a left drawer switches modules; one shared top
   Keep `route_model` (deep links) + `benchmark`. HomeScreen file kept but no longer the entry.
 - ☐ Build green; commit.
 
-### Phase 4 — Example demo prompts in empty chats  ☐  (C2 may do)
+### Phase 4 — Example demo prompts in empty chats  ◐  (Notes done)
 - ☐ AI Chat & Vision: pass `emptyStateComposable` rendering 2-3 tappable prompt rows (icon+text);
-  tap → send path (Vision prompts assume an attached image).
-- ☐ Notes: example chips in `RagScreen` `EmptyState` ("Summarize my notes", "Quiz me",
-  "Explain the key concepts"); tap → `ask/quiz/summarize`.
-- ☐ Build green; commit.
+  tap → send path (Vision prompts assume an attached image). NOT done — touches the shared chat
+  send path; deferred as follow-up.
+- ☑ Notes: example chips in `RagScreen` `EmptyState` ("Summarize my notes", "Quiz me",
+  "Explain the key concepts"); tap → `ask()`. DONE (`43ea005`).
+- ☑ Build green; committed.
 
 ### Phase 5 — Icon + description module headers  ☑ (folded into Phase 3 ShellTopBar)
 - Titles: AI Chat "Chat with Trace, fully on-device" · Vision "Ask about a photo or your camera"
@@ -152,3 +146,61 @@ push to main so C2 can pull and continue from the next unchecked box.
   leadingSendAction slot; AI Chat all-on; Vision doc-attach removed. Notes input adoption still
   pending (see Phase 1 Notes bullet). Last green commit on main handoff: pushed to main.
   **C2 resumes at Phase 1 → Notes bullet.** Phases 2-4 untouched.
+- 2026-07-20 (Dev C2): Phase 1 Notes input DONE (`f792029`) — kept TraceChatInput + added voice
+  mic (owner-chosen fallback). Phase 2 persistent attachments DONE (`4b801a6`). Both build-green
+  (`assembleDebug`), NOT device-tested.
+- 2026-07-20 (Dev C2): Phases 3-4 DONE (`43ea005`), build-green, NOT device-tested. Owner asked
+  to complete the full redesign; final APK placed at repo root as `trace-new.apk`.
+  - **Phase 3 (shell):** `ui/shell/AppShell.kt` — left hamburger drawer switches AI Chat / Vision /
+    Notes in place + Benchmark/Settings; nav `startDestination` → `ROUTE_SHELL` (old tile HomeScreen
+    kept for deep links/fallback). LOW-RISK design chosen: each module renders via its OWN existing
+    `MainScreen` (top bar + right history drawer reused unchanged); shell only owns the switcher;
+    module back opens the switcher. `force=true` re-init on switch fixes the model-name-keyed
+    capability-flag gotcha.
+  - **Phase 4:** Notes `EmptyState` example chips → `ask()`. AI Chat / Vision example prompts NOT
+    done (touch the shared chat send path) — a follow-up if wanted.
+  - **NEEDS DEVICE TESTING:** entry point changed; verify app launches to AI Chat, drawer switches
+    all 3 modules without nested-drawer/back weirdness, image+audio still work after switching,
+    Benchmark/Settings reachable. If the in-place shell misbehaves on device, the documented
+    fallback is a per-route drawer (navigate to each module's existing route instead of inline).
+
+---
+
+## Standalone-product redesign (Dev C1, 2026-07-20) — design system + de-fork
+
+Owner brief: make it feel first-party, not a fork. All phases build-green (`assembleDebug`), **NOT
+device-tested**. Final APK at repo root `Trace-debug.apk`.
+
+- **Phase A — design tokens** (`9555e80`): Nunito → **Inter** (bundled, offline; `Type.kt`). Dark
+  base **#111111** + neutral grey elevation ramp derived off it, Google blue/green tint dropped
+  (`Color.kt`). Per-module accents softened to **pastels** (bumped `pastel()`, reseeded accent hues,
+  neutral bg tints; `Theme.kt`).
+- **Phase B — unified top bar** (`05b5f23`): real **hamburger** (was back-arrow) via `ModelPageAppBar`
+  (AI Chat/Vision) + Notes rebuilt as `CenterAlignedTopAppBar` (centered icon+title, new-chat, **⋮
+  overflow** holding the knowledge-scope toggle + History).
+- **Phase C — empty states** (`3fc7b66`): shared `ui/common/ModuleEmptyState.kt` (accent icon +
+  title + description + tappable suggestion chips). AI Chat + Notes adopt it; AI Chat suggestions
+  send via `sendMessageTrigger`. Vision excluded (starts post-capture). NOTE: Notes input kept on
+  `TraceChatInput` (already cohesive: bordered/rounded + inline send + voice mic + Quiz); full
+  `MessageInputText` swap deferred to avoid IntentRouter hijacking note queries.
+- **Phase D — model settings in sidebar** (`e5e620a`): drawer "Model settings" row opens `ConfigDialog`
+  on the selected model (params only); reuses `saveModelConfig` + reinit. Shared model = global. The
+  per-screen `Tune` button + dialog removed from `ModelPageAppBar`.
+- **Phase F — cleanup/de-fork** (`a86332d`): removed the "Run benchmark" button under user bubbles
+  (+ dead dialog state). Stripped **Firebase Analytics** — `Analytics.kt` is now a no-op stub
+  (`firebaseAnalytics` always null; former `?.logEvent` sites no-op), removed firebase deps +
+  google-services plugin + `FirebaseApp.initializeApp` + APP_OPEN + AppMeasurement manifest block.
+- **Phase E — onboarding** (`0626bab`): `has_completed_onboarding` (settings.proto field 16) + repo
+  methods + VM passthroughs. `ui/onboarding/OnboardingScreen.kt` — fade/slide intro, offline
+  explainer, guided model-download CTA with live progress; auto-advances on SUCCEEDED. Nav
+  `startDestination` gates on the flag (onboarding first run → shell thereafter).
+
+**Deferred / follow-ups (not blocking):** AI Chat/Vision suggestion prompts beyond Notes; full
+Notes→MessageInputText swap; dead toml aliases (firebase-messaging/mcp/ktor) + oss-licenses prune;
+broad subtle-animation pass beyond drawer/dropdown defaults. Vestigial unused imports in
+`ModelPageAppBar`/`ChatPanel` (Kotlin warns, not errors) — safe to tidy.
+
+**DEVICE TEST CHECKLIST:** first launch → onboarding → download w/ progress → shell; every module
+shows hamburger + centered icon+title + (Notes) ⋮; Inter font + #111111 + pastel accents; Notes ⋮
+knowledge toggle works; Model settings in sidebar changes apply across modules; no benchmark button
+under bubbles; airplane-mode fully functional.

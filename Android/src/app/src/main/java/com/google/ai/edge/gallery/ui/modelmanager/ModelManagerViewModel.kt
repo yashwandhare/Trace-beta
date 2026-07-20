@@ -675,6 +675,14 @@ constructor(
     dataStoreRepository.saveTheme(theme = theme)
   }
 
+  fun hasCompletedOnboarding(): Boolean {
+    return dataStoreRepository.getHasCompletedOnboarding()
+  }
+
+  fun setOnboardingCompleted() {
+    dataStoreRepository.setHasCompletedOnboarding(true)
+  }
+
   /**
    * Retrieves whether Firebase Analytics collection is currently enabled.
    *

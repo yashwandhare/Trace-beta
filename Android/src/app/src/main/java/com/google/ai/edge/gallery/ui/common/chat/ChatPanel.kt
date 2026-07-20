@@ -200,8 +200,8 @@ fun ChatPanel(
   // LazyListState — enables virtualised (off-screen items not composed) rendering.
   val listState = rememberLazyListState()
   val density = LocalDensity.current
-  var showBenchmarkConfigsDialog by remember { mutableStateOf(false) }
-  val benchmarkMessage: MutableState<ChatMessage?> = remember { mutableStateOf(null) }
+
+
 
   var showErrorDialog by remember { mutableStateOf(false) }
   var customErrorMessage by remember { mutableStateOf<String?>(null) }
@@ -531,19 +531,6 @@ fun ChatPanel(
                           enabled = !uiState.inProgress,
                         )
                       }
-
-                      // Benchmark button
-                      if (selectedModel.showBenchmarkButton) {
-                        MessageActionButton(
-                          label = stringResource(R.string.run_benchmark),
-                          icon = Icons.Outlined.Timer,
-                          onClick = {
-                            showBenchmarkConfigsDialog = true
-                            benchmarkMessage.value = message
-                          },
-                          enabled = !uiState.inProgress,
-                        )
-                      }
                     }
                   }
                 }
@@ -701,16 +688,6 @@ fun ChatPanel(
     )
   }
 
-  // Benchmark config dialog.
-  if (showBenchmarkConfigsDialog) {
-    BenchmarkConfigDialog(
-      onDismissed = { showBenchmarkConfigsDialog = false },
-      messageToBenchmark = benchmarkMessage.value,
-      onBenchmarkClicked = { message, warmUpIterations, benchmarkIterations ->
-        onBenchmarkClicked(selectedModel, message, warmUpIterations, benchmarkIterations)
-      },
-    )
-  }
 }
 
 private suspend fun scrollToBottom(

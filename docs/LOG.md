@@ -175,3 +175,38 @@ Device testing of the conversational Notes module surfaced RAG quality and consi
 - Model config: default accelerator now CPU (`model_allowlist.json` "cpu,gpu"; `Consts.DEFAULT_ACCELERATORS`/`DEFAULT_VISION_ACCELERATOR` CPU-first). GPU still selectable.
 - Broken/open: whole batch not yet device-tested (RAG retrieval quality on real multi-page notes, history round-trip, pastel palette on-device, CPU inference latency). Vision text-input unification deferred (Vision is camera-only). Phase 4 (Memory & Schedules) next.
 - Benchmark numbers: `:app:assembleDebug` BUILD SUCCESSFUL. Debug APK ~220MB, copied to project root.
+
+---
+
+## 2026-07-20 — Dev C2 — UI Redesign (Phases 1-2 of the ChatGPT-shell handoff)
+Resumed `docs/UI_REDESIGN_HANDOFF.md` from C1's handoff point. On `dev-b`.
+- Did:
+  - **Phase 1 — Notes voice input** (`f792029`): kept the bespoke `TraceChatInput` (owner-chosen fallback, NOT the MessageInputText swap) to avoid IntentRouter hijacking note queries + unused camera/image machinery. Added a `trailingAction` slot to `TraceChatInput`; wired a voice mic via `HoldToDictateViewModel` (the app PTT engine) calling `viewModel.ask()` directly. Quiz-me already existed.
+  - **Phase 2 — Persistent Notes attachments** (`4b801a6`): new `notes_index.proto` (NoteSourceProto: label+text+ts) + serializer + two `DataStore<NotesIndex>` providers. `RagEngine` persists extracted TEXT on ingest (not vectors), `warmUp()` re-embeds on launch so chips survive restart; `forgetSource`/`forgetAllSources` prune. Removed the dead ViewModel-local RagEngine fallback in `LlmChatViewModel` (shared Hilt singleton always injected).
+- Broken/open:
+  - **NOT device-tested.** Owner decision: STOP at Phase 2 for an on-device testing checkpoint before Phase 3.
+  - **Phase 3 (app shell + left drawer) deferred** — it changes the nav entry point and nests drawers; needs device iteration. Flagged for whoever resumes: `initializeModel` skips re-init keyed by MODEL name only (not task), so a shell switching modules over one model needs `force=true` re-init or the model keeps the first task's supportImage/supportAudio flags.
+  - Phase 4 (example prompts) also remains.
+- Benchmark numbers: `:app:compileDebugKotlin` + `:app:assembleDebug` BUILD SUCCESSFUL. Debug APK copied to project root.
+
+---
+
+## 2026-07-20 — Dev C2 — UI Redesign Phases 3-4 (app shell + example prompts)
+Owner asked to complete the full redesign. On `dev-b` (`43ea005`).
+- Did:
+  - **Phase 3 — app shell** (`ui/shell/AppShell.kt`): new entry point (`startDestination` → `ROUTE_SHELL`). A LEFT hamburger drawer switches AI Chat / Vision / Notes in place, with Benchmark + Settings below a divider. Low-risk variant: each module renders via its OWN existing `MainScreen` (top bar + right history drawer reused unchanged); the shell only owns the switcher; a module's back opens the switcher. `force=true` re-init on module switch fixes the model-name-keyed capability-flag issue. Old tile HomeScreen route kept for deep links/fallback.
+  - **Phase 4 — example prompts:** Notes `EmptyState` shows tappable "Summarize my notes" / "Quiz me" / "Explain the key concepts" → `ask()`. AI Chat / Vision example prompts deferred (touch the shared chat send path).
+- Broken/open:
+  - **NOT device-tested — highest priority.** The shell changes the app entry point and switches modules in place. Verify on device: launches to AI Chat; drawer switches all 3 modules; no nested-drawer/back weirdness; image+audio work after switching; Benchmark/Settings reachable. Documented fallback if it misbehaves: per-route drawer (navigate to each module's existing route instead of inline).
+  - AI Chat / Vision example prompts remain.
+- Benchmark numbers: `:app:assembleDebug` BUILD SUCCESSFUL. Final APK at repo root as `trace-new.apk` (and `Trace-beta-debug.apk`).
+## 2026-07-20 — Dev C1 — Standalone-product redesign (design system + de-fork)
+Owner brief: make Trace feel first-party, not a fork. Six phases, each build-green (`assembleDebug`), NOT device-tested. Full detail + device-test checklist in `/docs/UI_REDESIGN_HANDOFF.md`.
+- Phase A tokens (`9555e80`): Inter font (bundled, offline), dark base #111111 + neutral grey ramp, pastel per-module accents, dropped Google blue.
+- Phase B top bar (`05b5f23`): real hamburger everywhere; Notes → CenterAlignedTopAppBar with centered icon+title, new-chat, ⋮ overflow (knowledge toggle + history).
+- Phase C empty states (`3fc7b66`): shared `ModuleEmptyState` (icon+title+desc+suggestion chips) on AI Chat + Notes; AI Chat chips send via sendMessageTrigger.
+- Phase D model settings (`e5e620a`): sidebar "Model settings" opens ConfigDialog on the shared model (global); removed the per-screen Tune button.
+- Phase F cleanup (`a86332d`): removed the benchmark button under user bubbles; stripped Firebase Analytics (no-op stub, deps + plugin + init + manifest gone) — offline app ships no telemetry.
+- Phase E onboarding (`0626bab`): first-run OnboardingScreen (intro + guided model download w/ progress), gated by a new `has_completed_onboarding` settings flag.
+- Deferred: AI Chat/Vision suggestion prompts beyond Notes, full Notes→MessageInputText swap, dead toml-alias/oss-licenses prune, broad animation pass.
+- Benchmark: `:app:assembleDebug` BUILD SUCCESSFUL. Debug APK ~220MB at repo root (`Trace-debug.apk`).

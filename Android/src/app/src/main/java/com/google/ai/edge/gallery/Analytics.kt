@@ -16,24 +16,25 @@
 
 package com.google.ai.edge.gallery
 
-import android.util.Log
-import com.google.firebase.Firebase
-import com.google.firebase.analytics.FirebaseAnalytics
-import com.google.firebase.analytics.analytics
+import android.os.Bundle
 
-private var hasLoggedAnalyticsWarning = false
+/**
+ * No-op analytics.
+ *
+ * Trace is a fully offline, on-device app — it ships no telemetry. Firebase
+ * Analytics (and the Google Services plugin) were removed; this stub keeps the
+ * former call sites compiling and doing nothing. [firebaseAnalytics] is always
+ * null so `firebaseAnalytics?.logEvent(...)` no-ops; the retained [NoOpAnalytics]
+ * covers the two direct calls that weren't null-guarded.
+ */
+object NoOpAnalytics {
+  fun logEvent(name: String, params: Bundle) {}
 
-val firebaseAnalytics: FirebaseAnalytics?
-  get() =
-    runCatching { Firebase.analytics }
-      .onFailure { exception ->
-        // Firebase.analytics can throw an exception if goolgle-services is not set up, e.g.,
-        // missing google-services.json.
-        if (!hasLoggedAnalyticsWarning) {
-          Log.w("AGAnalyticsFirebase", "Firebase Analytics is not available", exception)
-        }
-      }
-      .getOrNull()
+  fun setAnalyticsCollectionEnabled(enabled: Boolean) {}
+}
+
+/** Always null — no analytics backend. Kept so existing `?.logEvent` sites compile. */
+val firebaseAnalytics: NoOpAnalytics? = null
 
 enum class GalleryEvent(val id: String) {
   CAPABILITY_SELECT(id = "capability_select"),

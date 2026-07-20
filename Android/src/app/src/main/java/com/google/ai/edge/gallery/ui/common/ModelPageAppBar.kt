@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -122,12 +123,12 @@ fun ModelPageAppBar(
       }
     },
     modifier = modifier,
-    // The back button.
+    // The hamburger button (opens the shell module drawer).
     navigationIcon = {
       val enableBackButton = !isModelInitializing && !inProgress
       IconButton(onClick = onBackClicked, enabled = enableBackButton) {
         Icon(
-          imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+          imageVector = Icons.Rounded.Menu,
           contentDescription = stringResource(R.string.cd_navigate_back_icon),
         )
       }
@@ -135,28 +136,7 @@ fun ModelPageAppBar(
     // The config button for the model (if existed).
     actions = {
       val downloadSucceeded = curDownloadStatus?.status == ModelDownloadStatusType.SUCCEEDED
-      val showConfigButton = model.configs.isNotEmpty() && downloadSucceeded
       Box(modifier = Modifier.size(42.dp), contentAlignment = Alignment.Center) {
-        var configButtonOffset = 0.dp
-        if (showConfigButton && shouldShowHistoryButton) {
-          configButtonOffset = (-40).dp
-        }
-        if (showConfigButton) {
-          val enableConfigButton = !isModelInitializing && !inProgress && isModelInitialized
-          IconButton(
-            onClick = { showConfigDialog = true },
-            enabled = enableConfigButton,
-            modifier =
-              Modifier.offset(x = configButtonOffset).alpha(if (!enableConfigButton) 0.5f else 1f),
-          ) {
-            Icon(
-              imageVector = Icons.Rounded.Tune,
-              contentDescription = stringResource(R.string.cd_model_settings_icon),
-              tint = MaterialTheme.colorScheme.onSurface,
-              modifier = Modifier.size(20.dp),
-            )
-          }
-        }
         if (downloadSucceeded && shouldShowHistoryButton) {
           val enableHistoryButton =
             !isModelInitializing && !modelPreparing && !inProgress && isModelInitialized
@@ -176,122 +156,4 @@ fun ModelPageAppBar(
       }
     },
   )
-
-  // Config dialog.
-  if (showConfigDialog) {
-    // Remove the reset conversation turn count config for non-tiny-garden tasks.
-    //
-    // This may happen when user imports a model with "enable tiny garden" turned on and use the
-    // model in another non-tiny-garden task.
-    val modelConfigs = model.configs.toMutableList()
-    if (task.id != BuiltInTaskId.LLM_TINY_GARDEN) {
-      modelConfigs.removeIf { it.key == ConfigKeys.RESET_CONVERSATION_TURN_COUNT }
-    }
-    if (!task.allowCapability(ModelCapability.LLM_THINKING, model)) {
-      modelConfigs.removeIf { it.key == ConfigKeys.ENABLE_THINKING }
-    }
-    var supportsSpeculativeDecoding = false
-    // Check if the model file supports speculative decoding.
-    try {
-      com.google.ai.edge.litertlm.Capabilities(model.getPath(context)).use {
-        supportsSpeculativeDecoding = it.hasSpeculativeDecodingSupport()
-      }
-    } catch (e: Exception) {
-      // Ignore exceptions and assume not supported.
-    }
-    if (
-      !supportsSpeculativeDecoding ||
-        !task.allowCapability(ModelCapability.SPECULATIVE_DECODING, model)
-    ) {
-      modelConfigs.removeIf { it.key == ConfigKeys.ENABLE_SPECULATIVE_DECODING }
-    }
-    ConfigDialog(
-      title = stringResource(R.string.config_dialog_title),
-      configs = modelConfigs,
-      initialValues = model.configValues,
-      onDismissed = { showConfigDialog = false },
-      onOk = { curConfigValues, oldSystemPrompt, newSystemPrompt ->
-        // Hide config dialog.
-        showConfigDialog = false
-
-        // Check if the configs are changed or not. Also check if the model needs to be
-        // re-initialized.
-        var same = true
-        var needReinitialization = false
-        for (config in modelConfigs) {
-          val key = config.key.label
-          val oldValue =
-            convertValueToTargetType(
-              value = model.configValues.getValue(key),
-              valueType = config.valueType,
-            )
-          val newValue =
-            convertValueToTargetType(
-              value = curConfigValues.getValue(key),
-              valueType = config.valueType,
-            )
-          if (oldValue != newValue) {
-            same = false
-            if (config.needReinitialization) {
-              needReinitialization = true
-            }
-            break
-          }
-        }
-        val systemPromptChanged = newSystemPrompt != oldSystemPrompt
-
-        if (!same || systemPromptChanged) {
-          firebaseAnalytics?.logEvent(
-            GalleryEvent.MODEL_CONFIG_CHANGE.id,
-            Bundle().apply {
-              putString("model_id", model.name)
-              putString("capability_name", task.id)
-              putString("model_version", model.version)
-              putString("app_version", BuildConfig.VERSION_NAME)
-            },
-          )
-        }
-
-        if (same) {
-          if (systemPromptChanged) {
-            onSystemPromptChanged(newSystemPrompt)
-          }
-          return@ConfigDialog
-        }
-
-        // Save the config values to Model.
-        val oldConfigValues = model.configValues
-        model.prevConfigValues = oldConfigValues
-        model.configValues = curConfigValues
-
-        modelManagerViewModel.saveModelConfig(model)
-        modelManagerViewModel.updateConfigValuesUpdateTrigger()
-
-        if (!task.handleModelConfigChangesInTask) {
-          // Force to re-initialize the model with the new configs.
-          if (needReinitialization) {
-            modelManagerViewModel.initializeModel(
-              context = context,
-              task = task,
-              model = model,
-              force = true,
-              onDone = {
-                if (oldSystemPrompt != newSystemPrompt) {
-                  onSystemPromptChanged(newSystemPrompt)
-                }
-              },
-            )
-          }
-
-          // Notify.
-          onConfigChanged(oldConfigValues, model.configValues)
-        }
-      },
-      // AICore doesn't support system prompt yet.
-      showSystemPromptEditorTab =
-        allowEditingSystemPrompt && model.runtimeType != RuntimeType.AICORE,
-      defaultSystemPrompt = task.defaultSystemPrompt,
-      curSystemPrompt = curSystemPrompt,
-    )
-  }
 }

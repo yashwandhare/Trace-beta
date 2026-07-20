@@ -1,0 +1,39 @@
+/* Copyright 2026 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+syntax = "proto3";
+
+package com.google.ai.edge.gallery.proto;
+
+option java_package = "com.google.ai.edge.gallery.proto";
+option java_outer_classname = "NotesIndexOuter";
+option java_multiple_files = true;
+
+// One attached note/document, persisted as its extracted text (not embeddings).
+// On launch the text is re-chunked and re-embedded into the in-memory vector
+// store, so the RAG index survives process death without persisting vectors.
+message NoteSourceProto {
+  // Human-readable origin shown in the UI (e.g. the file display name).
+  string source_label = 1;
+  // The full extracted text of the document.
+  string extracted_text = 2;
+  // When it was ingested, in milliseconds since epoch.
+  int64 ingested_at_ms = 3;
+}
+
+// The persisted set of attached Notes sources.
+message NotesIndex {
+  repeated NoteSourceProto sources = 1;
+}
