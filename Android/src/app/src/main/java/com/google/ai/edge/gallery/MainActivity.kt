@@ -34,9 +34,12 @@ import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.LaunchedEffect
@@ -44,7 +47,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
 import androidx.core.animation.doOnEnd
 import androidx.core.net.toUri
 import androidx.core.os.bundleOf
@@ -101,19 +109,45 @@ class MainActivity : ComponentActivity() {
           Surface(modifier = Modifier.fillMaxSize()) {
             GalleryApp(modelManagerViewModel = modelManagerViewModel)
 
-            // Fade out a "mask" that has the same color as the background of the splash screen
-            // to reveal the actual app content.
-            var startMaskFadeout by remember { mutableStateOf(false) }
-            LaunchedEffect(Unit) { startMaskFadeout = true }
-            AnimatedVisibility(
-              !startMaskFadeout,
-              enter = fadeIn(animationSpec = snap(0)),
-              exit =
-                fadeOut(animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing)),
-            ) {
+            // Opening animation: an off-white screen with the Trace mark at
+            // center; the mark grows to fill the screen, then the overlay is
+            // removed to reveal the app. Kept snappy (~550ms).
+            var startOpen by remember { mutableStateOf(false) }
+            var openDone by remember { mutableStateOf(false) }
+            val openScale by animateFloatAsState(
+              targetValue = if (startOpen) 26f else 1f,
+              animationSpec = tween(durationMillis = 520, easing = FastOutSlowInEasing),
+              label = "openScale",
+            )
+            val openAlpha by animateFloatAsState(
+              targetValue = if (startOpen) 0f else 1f,
+              animationSpec = tween(durationMillis = 200, delayMillis = 320, easing = FastOutSlowInEasing),
+              label = "openAlpha",
+            )
+            LaunchedEffect(Unit) {
+              startOpen = true
+              delay(560)
+              openDone = true
+            }
+            if (!openDone) {
               Box(
-                modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
-              )
+                modifier =
+                  Modifier.fillMaxSize()
+                    .graphicsLayer { alpha = openAlpha }
+                    .background(Color(0xFFF5F5F0)),
+                contentAlignment = Alignment.Center,
+              ) {
+                Icon(
+                  painter = painterResource(R.drawable.icon),
+                  contentDescription = null,
+                  tint = Color.Unspecified,
+                  modifier =
+                    Modifier.size(96.dp).graphicsLayer {
+                      scaleX = openScale
+                      scaleY = openScale
+                    },
+                )
+              }
             }
           }
         }
