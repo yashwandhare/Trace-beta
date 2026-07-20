@@ -175,3 +175,16 @@ Device testing of the conversational Notes module surfaced RAG quality and consi
 - Model config: default accelerator now CPU (`model_allowlist.json` "cpu,gpu"; `Consts.DEFAULT_ACCELERATORS`/`DEFAULT_VISION_ACCELERATOR` CPU-first). GPU still selectable.
 - Broken/open: whole batch not yet device-tested (RAG retrieval quality on real multi-page notes, history round-trip, pastel palette on-device, CPU inference latency). Vision text-input unification deferred (Vision is camera-only). Phase 4 (Memory & Schedules) next.
 - Benchmark numbers: `:app:assembleDebug` BUILD SUCCESSFUL. Debug APK ~220MB, copied to project root.
+
+---
+
+## 2026-07-20 — Dev C2 — UI Redesign (Phases 1-2 of the ChatGPT-shell handoff)
+Resumed `docs/UI_REDESIGN_HANDOFF.md` from C1's handoff point. On `dev-b`.
+- Did:
+  - **Phase 1 — Notes voice input** (`f792029`): kept the bespoke `TraceChatInput` (owner-chosen fallback, NOT the MessageInputText swap) to avoid IntentRouter hijacking note queries + unused camera/image machinery. Added a `trailingAction` slot to `TraceChatInput`; wired a voice mic via `HoldToDictateViewModel` (the app PTT engine) calling `viewModel.ask()` directly. Quiz-me already existed.
+  - **Phase 2 — Persistent Notes attachments** (`4b801a6`): new `notes_index.proto` (NoteSourceProto: label+text+ts) + serializer + two `DataStore<NotesIndex>` providers. `RagEngine` persists extracted TEXT on ingest (not vectors), `warmUp()` re-embeds on launch so chips survive restart; `forgetSource`/`forgetAllSources` prune. Removed the dead ViewModel-local RagEngine fallback in `LlmChatViewModel` (shared Hilt singleton always injected).
+- Broken/open:
+  - **NOT device-tested.** Owner decision: STOP at Phase 2 for an on-device testing checkpoint before Phase 3.
+  - **Phase 3 (app shell + left drawer) deferred** — it changes the nav entry point and nests drawers; needs device iteration. Flagged for whoever resumes: `initializeModel` skips re-init keyed by MODEL name only (not task), so a shell switching modules over one model needs `force=true` re-init or the model keeps the first task's supportImage/supportAudio flags.
+  - Phase 4 (example prompts) also remains.
+- Benchmark numbers: `:app:compileDebugKotlin` + `:app:assembleDebug` BUILD SUCCESSFUL. Debug APK copied to project root.

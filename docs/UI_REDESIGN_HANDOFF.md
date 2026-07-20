@@ -61,39 +61,26 @@ Standardize on `MessageInputText` as the single input across all 3 modules; diff
   (`LlmChatTaskModule.kt:154`). No behavior change. DONE.
 - ☑ **Vision**: document attach removed — `ChatViewWrapper` call in `VisionCameraScreen.kt:124`
   passes `showImagePicker=true` and leaves `showAttachDocument` default false (item 5). DONE.
-- ☐ **Notes**: NOT DONE. Replace the bespoke `TraceChatInput` in `RagScreen.kt` (the block at
-  ~line 251, `// ---- Compact input bar (shared TraceChatInput) ----`) with `MessageInputText`:
-    - Pass `task` (Notes task via `modelManagerViewModel.getTaskById(BuiltInTaskId.RAG)`),
-      `showAttachDocument=true`, `showImagePicker=false`, `showAudioPicker=false` (voice PTT is
-      built into MessageInputText, so it comes for free — item 2's "add voice to Notes").
-    - `leadingSendAction = { }` → a circular "Quiz me" icon button (item 2: quiz icon in a circle
-      left of send). Wire onClick → `viewModel.quiz(model, query)`.
-    - Bridge `onSendMessage: (List<ChatMessage>)`: extract `ChatMessageText.content` →
-      `viewModel.ask(model, text)`; extract `ChatMessageFile`s → `viewModel.ingestDocument(...)`
-      (Notes ingests on attach, so attaching a doc should call ingest, not queue it as a message).
-    - Keep Notes' own transcript rendering (`Conversation`, quiz cards) and the attached-source
-      chips + Summarize action somewhere (they were in `TraceChatInput`'s slots — reuse
-      `AttachedSourcesRow`/`QuizSummarizeActions` above the input, or fold into leadingSendAction).
-    - CAUTION: `MessageInputText` routes sends through `IntentRouter` (`dispatchIntent`, line ~355)
-      which can hijack "file fetch"/"screen explain" phrasings. Normal note queries fall through
-      to `LLM_CHAT → onSendMessage`, so it's usually fine, but verify on device. If it's a problem,
-      keep `TraceChatInput` for Notes and just add a voice mic + Quiz-left-of-send to it instead —
-      simpler and avoids the IntentRouter. **This fallback is acceptable.**
-  - ☐ Build green; commit.
+- ☑ **Notes**: DONE via the sanctioned fallback (owner decision) — kept the bespoke
+  `TraceChatInput` instead of swapping to `MessageInputText`, to avoid IntentRouter hijacking
+  note queries and the unused camera/image machinery. Added a `trailingAction` slot to
+  `TraceChatInput`; wired a voice mic (HoldToDictateViewModel PTT) that calls `viewModel.ask()`
+  directly (no IntentRouter). Quiz-me was already present via `QuizSummarizeActions`. Commit `f792029`.
+  - ☑ Build green; committed.
 
 **C2 START HERE:** finish the Notes bullet above, then continue to Phase 2.
 
-### Phase 2 — Persistent Notes attachments  ☐
+### Phase 2 — Persistent Notes attachments  ☑
 Notes attachments survive app restart (save extracted text, re-embed on launch).
-- ☐ New `proto/notes_index.proto`: `NoteSourceProto { source_label, extracted_text,
-  ingested_at_ms }`, `NotesIndex { repeated NoteSourceProto sources }`. Serializer + a
-  `DataStore<NotesIndex>` provider in `di/AppModule.kt` (mirror the UserData one).
-- ☐ `RagRepository`/`RagEngine`: on `ingest`, persist source text; on `removeSource`/`clearIndex`,
-  update the store. Inject the DataStore (RagEngine is an app singleton via `RagDiModule`).
-- ☐ `warmUp()`: on first RagEngine/RagViewModel init, load persisted sources → re-chunk+re-embed
-  into `VectorStore` on a background dispatcher (~1-2s). `indexedSources` then repopulates so the
-  chips reappear. Show existing "Indexing…" state if a query lands first.
-- ☐ Build green; commit.
+- ☑ New `proto/notes_index.proto`: `NoteSourceProto { source_label, extracted_text,
+  ingested_at_ms }`, `NotesIndex { repeated NoteSourceProto sources }`. `NotesIndexSerializer` +
+  two `DataStore<NotesIndex>` providers in `di/AppModule.kt` (notes_index.pb).
+- ☑ `RagEngine`: takes the DataStore; `ingest` persists source text; `forgetSource`/
+  `forgetAllSources` prune it; all best-effort. Also removed the dead ViewModel-local RagEngine
+  fallback in `LlmChatViewModel` (the shared singleton is always injected).
+- ☑ `warmUp()`: on first `RagViewModel` init, load persisted sources → re-chunk+re-embed into
+  `VectorStore` on a background dispatcher; `indexedSources` repopulates so chips reappear.
+- ☑ Build green (`assembleDebug`); committed `4b801a6`.
 
 ### Phase 3 — App shell + left hamburger drawer + shared top bar  ☐  (largest)
 AI Chat becomes the home surface; a left drawer switches modules; one shared top bar.
@@ -152,3 +139,11 @@ push to main so C2 can pull and continue from the next unchecked box.
   leadingSendAction slot; AI Chat all-on; Vision doc-attach removed. Notes input adoption still
   pending (see Phase 1 Notes bullet). Last green commit on main handoff: pushed to main.
   **C2 resumes at Phase 1 → Notes bullet.** Phases 2-4 untouched.
+- 2026-07-20 (Dev C2): Phase 1 Notes input DONE (`f792029`) — kept TraceChatInput + added voice
+  mic (owner-chosen fallback). Phase 2 persistent attachments DONE (`4b801a6`). Both build-green
+  (`assembleDebug`), NOT device-tested. **Owner decision: STOP at Phase 2 for an on-device testing
+  checkpoint before Phase 3 (the app-shell rewrite touches the entry point / nested drawers and
+  needs device iteration).** Phases 3-4 remain. **Next dev resumes at Phase 3 — app shell.**
+  When resuming Phase 3, a real fork was flagged: `initializeModel` skips re-init keyed by MODEL
+  name only (not task), so switching modules over one model in a shell needs `force=true` re-init
+  or the model keeps the first task's supportImage/supportAudio flags.
