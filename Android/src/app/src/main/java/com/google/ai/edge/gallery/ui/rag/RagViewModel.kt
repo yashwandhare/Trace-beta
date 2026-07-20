@@ -121,6 +121,17 @@ class RagViewModel @Inject constructor(
 
   init {
     refreshSources()
+    // Re-embed any notes attached in a previous session (persisted as text).
+    // The chips reappear once the in-memory index is rebuilt.
+    viewModelScope.launch(Dispatchers.Default) {
+      if (ragEngine.indexedSources.isEmpty()) {
+        _uiState.update { it.copy(ingesting = true) }
+        ragEngine.warmUp()
+        _uiState.update {
+          it.copy(ingesting = false, indexedSources = ragEngine.indexedSources)
+        }
+      }
+    }
   }
 
   fun setKnowledgeScope(scope: KnowledgeScope) {
@@ -167,10 +178,11 @@ class RagViewModel @Inject constructor(
     }
   }
 
-  /** Removes one source from the index. */
+  /** Removes one source from the index (and its persisted copy). */
   fun removeSource(sourceLabel: String) {
     ragEngine.removeSource(sourceLabel)
     refreshSources()
+    viewModelScope.launch(Dispatchers.IO) { ragEngine.forgetSource(sourceLabel) }
   }
 
   /**

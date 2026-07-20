@@ -17,6 +17,8 @@
 package com.google.ai.edge.gallery.rag
 
 import android.content.Context
+import androidx.datastore.core.DataStore
+import com.google.ai.edge.gallery.proto.NotesIndex
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -35,7 +37,10 @@ import javax.inject.Singleton
 internal object RagDiModule {
   @Provides
   @Singleton
-  fun provideRagEngine(@ApplicationContext context: Context): RagEngine {
-    return RagEngine(context)
+  fun provideRagEngine(
+    @ApplicationContext context: Context,
+    notesIndexStore: DataStore<NotesIndex>,
+  ): RagEngine {
+    return RagEngine(context, notesIndexStore)
   }
 }

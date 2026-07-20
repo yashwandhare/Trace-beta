@@ -65,8 +65,7 @@ open class LlmChatViewModelBase(
   userDataDataStore: DataStore<UserData>? = null,
   private val modelFeedbackRepository: Any? = null,
   // App-wide shared RAG engine (Hilt singleton) so AI Chat and the RAG module
-  // query one index. When null (non-Hilt construction), initRag() creates a
-  // ViewModel-local engine which is closed in onCleared().
+  // query one index.
   private val sharedRagEngine: com.google.ai.edge.gallery.rag.RagEngine? = null,
 ) : ChatViewModel(userDataDataStore) {
   private val _uiSystemPrompt = MutableStateFlow("")
@@ -75,9 +74,8 @@ open class LlmChatViewModelBase(
   private var ttsManager: com.google.ai.edge.gallery.voice.TtsManager? = null
 
   // --- Phase 3 RAG ---
-  private var localRagEngine: com.google.ai.edge.gallery.rag.RagEngine? = null
   private val ragEngine: com.google.ai.edge.gallery.rag.RagEngine?
-    get() = sharedRagEngine ?: localRagEngine
+    get() = sharedRagEngine
 
   // The most recent quiz/summary the RAG engine produced. Dev C2's Quiz UI
   // observes this to render cards; null when there's no active RAG result.
@@ -86,9 +84,7 @@ open class LlmChatViewModelBase(
   val ragResponse = _ragResponse.asStateFlow()
 
   fun initRag(context: android.content.Context) {
-      if (sharedRagEngine == null && localRagEngine == null) {
-          localRagEngine = com.google.ai.edge.gallery.rag.RagEngine(context.applicationContext)
-      }
+      // The shared RAG engine is an injected app singleton — nothing to construct.
   }
 
   /** Clears the surfaced RAG result (e.g. when the UI dismisses the quiz panel). */
@@ -107,13 +103,7 @@ open class LlmChatViewModelBase(
       ttsManager?.shutdown()
       // Clear the SemanticFileMatcher classifier so it doesn't hold a stale model reference.
       com.google.ai.edge.gallery.filefetch.SemanticFileMatcher.clearClassifier()
-      // Release a ViewModel-local RAG embedder. The shared singleton engine is
-      // app-scoped and must NOT be closed here.
-      val engine = localRagEngine
-      localRagEngine = null
-      if (engine != null) {
-          viewModelScope.launch { engine.close() }
-      }
+      // The shared RAG engine is app-scoped (Hilt singleton) and must NOT be closed here.
   }
 
   /**

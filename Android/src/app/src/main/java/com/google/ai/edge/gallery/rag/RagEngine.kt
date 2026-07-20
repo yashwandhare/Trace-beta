@@ -18,10 +18,14 @@ package com.google.ai.edge.gallery.rag
 
 import android.content.Context
 import android.util.Log
+import androidx.datastore.core.DataStore
 import com.google.ai.edge.gallery.data.Model
+import com.google.ai.edge.gallery.proto.NoteSourceProto
+import com.google.ai.edge.gallery.proto.NotesIndex
 import com.google.ai.edge.gallery.runtime.runtimeHelper
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.first
 
 private const val TAG = "TraceRagEngine"
 
@@ -38,7 +42,7 @@ private const val TAG = "TraceRagEngine"
  * Ownership: create one per RAG-capable screen/ViewModel, pass the [Model] and a
  * [CoroutineScope] (the ViewModel's) into [generate], and [close] on clear.
  */
-class RagEngine(appContext: Context) {
+class RagEngine(appContext: Context, private val notesIndexStore: DataStore<NotesIndex>) {
 
   private val repository = RagRepository(appContext)
 
@@ -48,13 +52,93 @@ class RagEngine(appContext: Context) {
   val indexedSources: List<String>
     get() = repository.indexedSources
 
-  /** Ingests an attached document. See [RagRepository.ingest]. */
-  suspend fun ingest(text: String, sourceLabel: String): Int =
-    repository.ingest(text, sourceLabel)
+  /**
+   * Ingests an attached document (see [RagRepository.ingest]) and persists its
+   * extracted text so it survives process death — re-embedded on next launch via
+   * [warmUp]. Persistence is best-effort; a failure here doesn't fail the ingest.
+   */
+  suspend fun ingest(text: String, sourceLabel: String): Int {
+    val indexed = repository.ingest(text, sourceLabel)
+    if (indexed > 0) persistSource(sourceLabel, text)
+    return indexed
+  }
 
   fun removeSource(sourceLabel: String) = repository.removeSource(sourceLabel)
 
   fun clearIndex() = repository.clearIndex()
+
+  // ---------------------------------------------------------------------------
+  // Persistence (extracted text; re-embedded on launch — not raw vectors)
+  // ---------------------------------------------------------------------------
+
+  private suspend fun persistSource(sourceLabel: String, text: String) {
+    try {
+      notesIndexStore.updateData { current ->
+        val kept = current.sourcesList.filter { it.sourceLabel != sourceLabel }
+        NotesIndex.newBuilder()
+          .addAllSources(kept)
+          .addSources(
+            NoteSourceProto.newBuilder()
+              .setSourceLabel(sourceLabel)
+              .setExtractedText(text)
+              .setIngestedAtMs(System.currentTimeMillis())
+              .build()
+          )
+          .build()
+      }
+    } catch (e: Exception) {
+      Log.w(TAG, "Failed to persist source '$sourceLabel'", e)
+    }
+  }
+
+  /** Drops a persisted source (call alongside [removeSource]). Best-effort. */
+  suspend fun forgetSource(sourceLabel: String) {
+    try {
+      notesIndexStore.updateData { current ->
+        NotesIndex.newBuilder()
+          .addAllSources(current.sourcesList.filter { it.sourceLabel != sourceLabel })
+          .build()
+      }
+    } catch (e: Exception) {
+      Log.w(TAG, "Failed to forget source '$sourceLabel'", e)
+    }
+  }
+
+  /** Clears all persisted sources (call alongside [clearIndex]). Best-effort. */
+  suspend fun forgetAllSources() {
+    try {
+      notesIndexStore.updateData { NotesIndex.getDefaultInstance() }
+    } catch (e: Exception) {
+      Log.w(TAG, "Failed to clear persisted sources", e)
+    }
+  }
+
+  /**
+   * Re-embeds persisted note sources into the in-memory store. Idempotent: skips
+   * sources already indexed. Call once on first Notes/RAG init; runs on the
+   * caller's (background) scope. Safe if nothing is persisted.
+   */
+  suspend fun warmUp() {
+    if (repository.hasIndexedContent) return
+    val persisted =
+      try {
+        notesIndexStore.data.first().sourcesList
+      } catch (e: Exception) {
+        Log.w(TAG, "Failed to read persisted sources", e)
+        return
+      }
+    if (persisted.isEmpty()) return
+    val already = repository.indexedSources.toSet()
+    for (source in persisted) {
+      if (source.sourceLabel in already) continue
+      try {
+        repository.ingest(source.extractedText, source.sourceLabel)
+      } catch (e: Exception) {
+        Log.w(TAG, "warmUp: failed to re-embed '${source.sourceLabel}'", e)
+      }
+    }
+    Log.d(TAG, "warmUp: re-embedded ${persisted.size} persisted source(s)")
+  }
 
   /**
    * Detects whether [query] is a RAG request against indexed content. Returns
