@@ -90,6 +90,9 @@ message Settings {
   bool search_scope_screenshots_enabled = 13;
   bool search_scope_documents_enabled = 14;
   int32 search_scope_recent_images_count = 15;
+
+  // Has the first-run onboarding been completed.
+  bool has_completed_onboarding = 16;
 }
 
 message McpAuth {

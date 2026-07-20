@@ -90,6 +90,10 @@ interface DataStoreRepository {
 
   fun setHasRunTinyGarden(hasRun: Boolean)
 
+  fun getHasCompletedOnboarding(): Boolean
+
+  fun setHasCompletedOnboarding(completed: Boolean)
+
   fun addCutout(cutout: Cutout)
 
   fun getAllCutouts(): List<Cutout>
@@ -315,6 +319,21 @@ class DefaultDataStoreRepository(
   override fun setHasRunTinyGarden(hasRun: Boolean) {
     runBlocking {
       dataStore.updateData { settings -> settings.toBuilder().setHasRunTinyGarden(hasRun).build() }
+    }
+  }
+
+  override fun getHasCompletedOnboarding(): Boolean {
+    return runBlocking {
+      val settings = dataStore.data.first()
+      settings.hasCompletedOnboarding
+    }
+  }
+
+  override fun setHasCompletedOnboarding(completed: Boolean) {
+    runBlocking {
+      dataStore.updateData { settings ->
+        settings.toBuilder().setHasCompletedOnboarding(completed).build()
+      }
     }
   }
 

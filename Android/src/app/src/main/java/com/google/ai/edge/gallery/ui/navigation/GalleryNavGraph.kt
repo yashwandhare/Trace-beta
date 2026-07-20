@@ -85,6 +85,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val TAG = "AGGalleryNavGraph"
+private const val ROUTE_ONBOARDING = "onboarding"
 private const val ROUTE_SHELL = "shell"
 private const val ROUTE_HOMESCREEN = "homepage"
 private const val ROUTE_MODEL = "route_model"
@@ -172,12 +173,30 @@ fun GalleryNavHost(
     onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
   }
 
+  val onboardingCompleted = remember { modelManagerViewModel.hasCompletedOnboarding() }
+
   NavHost(
     navController = navController,
-    startDestination = ROUTE_SHELL,
+    startDestination = if (onboardingCompleted) ROUTE_SHELL else ROUTE_ONBOARDING,
     enterTransition = { EnterTransition.None },
     exitTransition = { ExitTransition.None },
   ) {
+    // First-run onboarding — guided intro + model download. Once complete, the
+    // shell becomes the home surface and onboarding is not shown again.
+    composable(route = ROUTE_ONBOARDING) {
+      Box(modifier = modifier.fillMaxSize()) {
+        com.google.ai.edge.gallery.ui.onboarding.OnboardingScreen(
+          modelManagerViewModel = modelManagerViewModel,
+          onDone = {
+            modelManagerViewModel.setOnboardingCompleted()
+            navController.navigate(ROUTE_SHELL) {
+              popUpTo(ROUTE_ONBOARDING) { inclusive = true }
+            }
+          },
+        )
+      }
+    }
+
     // ChatGPT-style app shell — the entry point (Phase 3). Left drawer switches
     // AI Chat / Vision / Notes in place and reaches Benchmark + Settings.
     composable(route = ROUTE_SHELL) {
