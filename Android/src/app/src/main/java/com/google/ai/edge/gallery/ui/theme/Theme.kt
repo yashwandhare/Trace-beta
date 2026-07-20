@@ -151,7 +151,7 @@ val LocalCustomColors = staticCompositionLocalOf { CustomColors() }
  * home tiles read calmer and more consistent without hand-tuning each hex.
  * Keep the shifts small — this is a gentle mute, not a redesign.
  */
-private fun Color.pastel(desaturate: Float = 0.12f, lighten: Float = 0.08f): Color {
+private fun Color.pastel(desaturate: Float = 0.22f, lighten: Float = 0.16f): Color {
   val hsv = FloatArray(3)
   android.graphics.Color.colorToHSV(this.toArgb(), hsv)
   hsv[1] = (hsv[1] * (1f - desaturate)).coerceIn(0f, 1f)
@@ -244,47 +244,47 @@ val lightCustomColors =
 
 val darkCustomColors =
   CustomColors(
-    appTitleGradientColors = listOf(Color(0xFF85B1F8), Color(0xFF3174F1)),
-    tabHeaderBgColor = Color(0xFF3174F1),
+    appTitleGradientColors = listOf(Color(0xFFB9A3E3), Color(0xFF8AB4D8)),
+    tabHeaderBgColor = Color(0xFF8AB4D8),
     taskCardBgColor = surfaceContainerHighDark,
     taskBgColors =
       listOf(
-        // red
-        Color(0xFF181210),
+        // red / vision
+        Color(0xFF1A1416),
         // green
-        Color(0xFF131711),
-        // blue
-        Color(0xFF191924),
-        // yellow
-        Color(0xFF1A1813),
+        Color(0xFF141A16),
+        // blue / ai chat
+        Color(0xFF14181C),
+        // yellow / notes
+        Color(0xFF1A1814),
       ),
     taskBgGradientColors =
       listOf(
-        // red
-        listOf(Color(0xFFE25F57), Color(0xFFDB372D)),
+        // red / vision
+        listOf(Color(0xFFE79A93), Color(0xFFD98C84)),
         // green
-        listOf(Color(0xFF41A15F), Color(0xFF128937)),
-        // blue
-        listOf(Color(0xFF669DF6), Color(0xFF3174F1)),
-        // yellow
-        listOf(Color(0xFFFDD45D), Color(0xFFCAA12A)),
+        listOf(Color(0xFF8FCBA3), Color(0xFF6FB98A)),
+        // blue / ai chat
+        listOf(Color(0xFF9FC0E8), Color(0xFF8AB4D8)),
+        // yellow / notes
+        listOf(Color(0xFFE8CE8F), Color(0xFFD9BE7A)),
       ).pastel(),
     taskIconColors =
       listOf(
-        // red.
-        Color(0xFFE25F57),
+        // red / vision
+        Color(0xFFE79A93),
         // green
-        Color(0xFF41A15F),
-        // blue
-        Color(0xFF669DF6),
-        // yellow
-        Color(0xFFCAA12A),
+        Color(0xFF8FCBA3),
+        // blue / ai chat
+        Color(0xFF9FC0E8),
+        // yellow / notes
+        Color(0xFFE8CE8F),
       ).pastel(),
-    taskIconShapeBgColor = Color(0xFF202124),
-    homeBottomGradient = listOf(Color(0x00F8F9FF), Color(0x1AF6AD01)),
-    agentBubbleBgColor = Color(0xFF1b1c1d),
-    userBubbleBgColor = Color(0xFF1f3760),
-    linkColor = Color(0xFF9DCAFC),
+    taskIconShapeBgColor = Color(0xFF1C1C1C),
+    homeBottomGradient = listOf(Color(0x00111111), Color(0x1AD9BE7A)),
+    agentBubbleBgColor = Color(0xFF1C1C1C),
+    userBubbleBgColor = Color(0xFF2A2A2A),
+    linkColor = Color(0xFF9FC0E8),
     successColor = Color(0xFFA1CE83),
     recordButtonBgColor = Color(0xFFEE675C),
     waveFormBgColor = Color(0xFFaaaaaa),
