@@ -47,7 +47,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.rounded.AddComment
 import androidx.compose.material.icons.rounded.AutoAwesome
@@ -55,14 +54,19 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Lightbulb
+import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.MenuBook
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Summarize
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -73,8 +77,6 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
@@ -228,36 +230,65 @@ fun RagScreen(
       ) {
         Scaffold(
           topBar = {
-            TopAppBar(
-              title = { Text("Notes", fontWeight = FontWeight.SemiBold) },
+            var showOverflow by remember { mutableStateOf(false) }
+            CenterAlignedTopAppBar(
+              title = {
+                Row(
+                  verticalAlignment = Alignment.CenterVertically,
+                  horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                  Icon(
+                    Icons.Rounded.MenuBook,
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(24.dp),
+                  )
+                  Text("Notes", style = MaterialTheme.typography.titleMedium, color = accent)
+                }
+              },
               navigationIcon = {
                 IconButton(onClick = onNavUp) {
-                  Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
+                  Icon(Icons.Rounded.Menu, contentDescription = "Menu")
                 }
               },
               actions = {
-                KnowledgeScopeToggle(
-                  scope = uiState.knowledgeScope,
-                  accent = accent,
-                  onToggle = {
-                    viewModel.setKnowledgeScope(
-                      if (uiState.knowledgeScope == KnowledgeScope.NOTES_ONLY) {
-                        KnowledgeScope.NOTES_AND_MODEL
-                      } else {
-                        KnowledgeScope.NOTES_ONLY
-                      }
-                    )
-                  },
-                )
                 IconButton(onClick = { viewModel.newConversation() }) {
                   Icon(Icons.Rounded.AddComment, contentDescription = "New conversation")
                 }
-                IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                  Icon(Icons.Rounded.History, contentDescription = "History")
+                IconButton(onClick = { showOverflow = true }) {
+                  Icon(Icons.Rounded.MoreVert, contentDescription = "More options")
+                }
+                DropdownMenu(expanded = showOverflow, onDismissRequest = { showOverflow = false }) {
+                  DropdownMenuItem(
+                    text = {
+                      Text(
+                        if (uiState.knowledgeScope == KnowledgeScope.NOTES_ONLY) "Notes only"
+                        else "Notes + AI"
+                      )
+                    },
+                    leadingIcon = { Icon(Icons.Rounded.Lightbulb, contentDescription = null) },
+                    onClick = {
+                      viewModel.setKnowledgeScope(
+                        if (uiState.knowledgeScope == KnowledgeScope.NOTES_ONLY) {
+                          KnowledgeScope.NOTES_AND_MODEL
+                        } else {
+                          KnowledgeScope.NOTES_ONLY
+                        }
+                      )
+                    },
+                  )
+                  DropdownMenuItem(
+                    text = { Text("History") },
+                    leadingIcon = { Icon(Icons.Rounded.History, contentDescription = null) },
+                    onClick = {
+                      showOverflow = false
+                      scope.launch { drawerState.open() }
+                    },
+                  )
                 }
               },
               colors =
-                TopAppBarDefaults.topAppBarColors(
+                TopAppBarDefaults.centerAlignedTopAppBarColors(
                   containerColor = MaterialTheme.colorScheme.surface,
                   titleContentColor = MaterialTheme.colorScheme.onSurface,
                 ),
@@ -631,29 +662,6 @@ private fun GeneratingBubble(accent: Color) {
         Text("Thinking from your notes…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
       }
     }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Knowledge-scope toggle (top bar)
-// ---------------------------------------------------------------------------
-
-@Composable
-private fun KnowledgeScopeToggle(scope: KnowledgeScope, accent: Color, onToggle: () -> Unit) {
-  val on = scope == KnowledgeScope.NOTES_AND_MODEL
-  TextButton(onClick = onToggle) {
-    Icon(
-      Icons.Rounded.Lightbulb,
-      contentDescription = null,
-      tint = if (on) accent else MaterialTheme.colorScheme.onSurfaceVariant,
-      modifier = Modifier.size(18.dp),
-    )
-    Spacer(Modifier.width(6.dp))
-    Text(
-      if (on) "Notes + AI" else "Notes only",
-      style = MaterialTheme.typography.labelMedium,
-      color = if (on) accent else MaterialTheme.colorScheme.onSurfaceVariant,
-    )
   }
 }
 

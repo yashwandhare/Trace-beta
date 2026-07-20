@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -122,12 +123,12 @@ fun ModelPageAppBar(
       }
     },
     modifier = modifier,
-    // The back button.
+    // The hamburger button (opens the shell module drawer).
     navigationIcon = {
       val enableBackButton = !isModelInitializing && !inProgress
       IconButton(onClick = onBackClicked, enabled = enableBackButton) {
         Icon(
-          imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+          imageVector = Icons.Rounded.Menu,
           contentDescription = stringResource(R.string.cd_navigate_back_icon),
         )
       }
