@@ -308,6 +308,10 @@ fun ChatView(
               inProgress = uiState.inProgress,
               modelPreparing = uiState.preparing,
               shouldShowHistoryButton = true,
+              onNewChatClicked = {
+                onResetSessionClicked(selectedModel, emptyList(), /* clearHistory= */ true) {}
+                viewModel.currentSessionId = UUID.randomUUID().toString()
+              },
               onConfigChanged = { old, new ->
                 // Filter out config values that are not relevant to the task.
                 //

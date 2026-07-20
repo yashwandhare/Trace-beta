@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.Tune
@@ -85,8 +86,8 @@ fun ModelPageAppBar(
   onSystemPromptChanged: (String) -> Unit = {},
   shouldShowHistoryButton: Boolean = false,
   onHistoryClicked: (Model) -> Unit = {},
+  onNewChatClicked: (() -> Unit)? = null,
 ) {
-  var showConfigDialog by remember { mutableStateOf(false) }
   val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
   val context = LocalContext.current
   val curDownloadStatus = modelManagerUiState.modelDownloadStatus[model.name]
@@ -136,14 +137,28 @@ fun ModelPageAppBar(
     // The config button for the model (if existed).
     actions = {
       val downloadSucceeded = curDownloadStatus?.status == ModelDownloadStatusType.SUCCEEDED
-      Box(modifier = Modifier.size(42.dp), contentAlignment = Alignment.Center) {
+      val enableActions =
+        downloadSucceeded && !isModelInitializing && !modelPreparing && !inProgress && isModelInitialized
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        if (downloadSucceeded && onNewChatClicked != null) {
+          IconButton(
+            onClick = { onNewChatClicked() },
+            enabled = enableActions,
+            modifier = Modifier.alpha(if (!enableActions) 0.5f else 1f),
+          ) {
+            Icon(
+              imageVector = Icons.Rounded.EditNote,
+              contentDescription = stringResource(R.string.new_chat),
+              tint = MaterialTheme.colorScheme.onSurface,
+              modifier = Modifier.size(22.dp),
+            )
+          }
+        }
         if (downloadSucceeded && shouldShowHistoryButton) {
-          val enableHistoryButton =
-            !isModelInitializing && !modelPreparing && !inProgress && isModelInitialized
           IconButton(
             onClick = { onHistoryClicked(model) },
-            enabled = enableHistoryButton,
-            modifier = Modifier.alpha(if (!enableHistoryButton) 0.5f else 1f),
+            enabled = enableActions,
+            modifier = Modifier.alpha(if (!enableActions) 0.5f else 1f),
           ) {
             Icon(
               imageVector = Icons.Rounded.History,

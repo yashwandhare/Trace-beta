@@ -167,7 +167,6 @@ fun AppShell(
   if (showSettings) {
     SettingsDialog(
       curThemeOverride = modelManagerViewModel.readThemeOverride(),
-      curFirebaseAnalytics = modelManagerViewModel.readFirebaseAnalytics(),
       modelManagerViewModel = modelManagerViewModel,
       onDismissed = { showSettings = false },
     )
