@@ -152,6 +152,7 @@ class LlmChatTask @Inject constructor() : CustomTask {
         )
       },
       showImagePicker = true,
+      showAttachDocument = true,
       showAudioPicker = true,
       composableBelowMessageList = { model ->
         // Voice input (PTT) lives inside MessageInputText; nothing to render here.

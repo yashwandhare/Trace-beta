@@ -183,8 +183,10 @@ fun MessageInputText(
   showSkillsPicker: Boolean = false,
   showMcpPicker: Boolean = false,
   showImagePicker: Boolean = false,
+  showAttachDocument: Boolean = false,
   showAudioPicker: Boolean = false,
   voiceButton: @Composable () -> Unit = {},
+  leadingSendAction: @Composable () -> Unit = {},
   showStopButtonWhenInProgress: Boolean = false,
   onImageLimitExceeded: () -> Unit = {},
   onModelNotSupportImage: () -> Unit = {},
@@ -715,6 +717,27 @@ fun MessageInputText(
                       expanded = showAddContentMenu,
                       onDismissRequest = { showAddContentMenu = false },
                     ) {
+                      // Attach document — gated independently so Vision (image-only)
+                      // can hide it while keeping the image pickers, and Notes can
+                      // show only this.
+                      if (showAttachDocument) {
+                        DropdownMenuItem(
+                          text = {
+                            Row(
+                              verticalAlignment = Alignment.CenterVertically,
+                              horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                              Icon(Icons.Rounded.InsertDriveFile, contentDescription = null)
+                              Text("Attach document")
+                            }
+                          },
+                          onClick = {
+                            showAddContentMenu = false
+                            pickFile.launch(arrayOf("application/pdf", "text/*", "text/markdown", "text/html", "application/octet-stream", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.presentationml.presentation"))
+                          },
+                        )
+                      }
+
                       if (showImagePicker) {
                         val isImageLimitExceededForAiCore =
                           modelManagerUiState.selectedModel.runtimeType == RuntimeType.AICORE &&
@@ -731,21 +754,6 @@ fun MessageInputText(
                               if (isImageSupported) Color.Unspecified
                               else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
                           )
-                        DropdownMenuItem(
-                          text = {
-                            Row(
-                              verticalAlignment = Alignment.CenterVertically,
-                              horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            ) {
-                              Icon(Icons.Rounded.InsertDriveFile, contentDescription = null)
-                              Text("Attach document")
-                            }
-                          },
-                          onClick = {
-                            showAddContentMenu = false
-                            pickFile.launch(arrayOf("application/pdf", "text/*", "text/markdown", "text/html", "application/octet-stream", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.presentationml.presentation"))
-                          },
-                        )
 
                         // Take a picture.
                         DropdownMenuItem(
@@ -1018,6 +1026,8 @@ fun MessageInputText(
                 // Send button.
                 else {
                   Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Optional leading action (e.g. Notes' Quiz-me button), left of mic/send.
+                    leadingSendAction()
                     IconButton(
                       onClick = {
                         if (voiceUiState.recognizing) {
