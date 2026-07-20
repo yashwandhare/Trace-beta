@@ -36,6 +36,7 @@ import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -62,6 +63,8 @@ import androidx.compose.ui.unit.dp
 import com.google.ai.edge.gallery.customtasks.common.CustomTaskDataForBuiltinTask
 import com.google.ai.edge.gallery.data.BuiltInTaskId
 import com.google.ai.edge.gallery.data.ModelDownloadStatusType
+import com.google.ai.edge.gallery.data.convertValueToTargetType
+import com.google.ai.edge.gallery.ui.common.ConfigDialog
 import com.google.ai.edge.gallery.ui.home.SettingsDialog
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import kotlinx.coroutines.launch
@@ -100,6 +103,7 @@ fun AppShell(
 
   var activeModule by remember { mutableStateOf(ShellModule.AI_CHAT) }
   var showSettings by remember { mutableStateOf(false) }
+  var showModelSettings by remember { mutableStateOf(false) }
 
   ModalNavigationDrawer(
     drawerState = drawerState,
@@ -114,6 +118,10 @@ fun AppShell(
           onBenchmark = {
             scope.launch { drawerState.close() }
             onOpenBenchmark(uiState.selectedModel.name)
+          },
+          onModelSettings = {
+            showModelSettings = true
+            scope.launch { drawerState.close() }
           },
           onSettings = {
             showSettings = true
@@ -164,6 +172,52 @@ fun AppShell(
       onDismissed = { showSettings = false },
     )
   }
+
+  if (showModelSettings) {
+    val model = uiState.selectedModel
+    val configs = remember(model.name) { model.configs }
+    if (configs.isEmpty()) {
+      showModelSettings = false
+    } else {
+      ConfigDialog(
+        title = "Model settings",
+        configs = configs,
+        initialValues = model.configValues,
+        showSystemPromptEditorTab = false,
+        onDismissed = { showModelSettings = false },
+        onOk = { curConfigValues, _, _ ->
+          showModelSettings = false
+          // Global effect: all three modules share this one model, so editing its
+          // config here applies everywhere. Reuse the same save + reinit path as
+          // the old per-screen Tune dialog.
+          var changed = false
+          var needReinit = false
+          for (config in configs) {
+            val key = config.key.label
+            val oldValue =
+              convertValueToTargetType(model.configValues.getValue(key), config.valueType)
+            val newValue =
+              convertValueToTargetType(curConfigValues.getValue(key), config.valueType)
+            if (oldValue != newValue) {
+              changed = true
+              if (config.needReinitialization) needReinit = true
+            }
+          }
+          if (!changed) return@ConfigDialog
+          model.prevConfigValues = model.configValues
+          model.configValues = curConfigValues
+          modelManagerViewModel.saveModelConfig(model)
+          modelManagerViewModel.updateConfigValuesUpdateTrigger()
+          if (needReinit) {
+            val task = modelManagerViewModel.getTaskById(activeModule.taskId)
+            if (task != null) {
+              modelManagerViewModel.initializeModel(context, task = task, model = model, force = true)
+            }
+          }
+        },
+      )
+    }
+  }
 }
 
 @Composable
@@ -171,6 +225,7 @@ private fun AppDrawerContent(
   active: ShellModule,
   onModuleSelected: (ShellModule) -> Unit,
   onBenchmark: () -> Unit,
+  onModelSettings: () -> Unit,
   onSettings: () -> Unit,
 ) {
   Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
@@ -197,6 +252,8 @@ private fun AppDrawerContent(
     Spacer(Modifier.height(12.dp))
 
     DrawerRow(icon = Icons.Rounded.Speed, label = "Benchmark", description = null, selected = false, onClick = onBenchmark)
+    Spacer(Modifier.height(4.dp))
+    DrawerRow(icon = Icons.Rounded.Tune, label = "Model settings", description = null, selected = false, onClick = onModelSettings)
     Spacer(Modifier.height(4.dp))
     DrawerRow(icon = Icons.Rounded.Settings, label = "Settings", description = null, selected = false, onClick = onSettings)
   }
