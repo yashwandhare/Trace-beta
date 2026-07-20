@@ -49,21 +49,39 @@ windows get example prompts and icon+description headers. **100% offline. dev-a 
 
 ## TODO
 
-### Phase 1 — Unified input, per-module config  ☐
+### Phase 1 — Unified input, per-module config  ◐ (partially done — C2 finish Notes)
 Standardize on `MessageInputText` as the single input across all 3 modules; differ only by flags.
-- ☐ Split the `+`-menu gating in `MessageInputText`: replace the single `showImagePicker` guard
-  over the three items with `showAttachDocument`, `showTakePhoto`, `showPickImage` (keep
-  `showAudioPicker`). Thread these through `ChatView` → `ChatViewWrapper` → `LlmChatScreen`.
-- ☐ Add an optional `leadingSendAction: @Composable () -> Unit` slot to `MessageInputText`'s
-  send row (left of the send button) for Notes' circular "Quiz me" button.
-- ☐ **AI Chat**: doc + photo + album + audio + voice + history (all true). No behavior change.
-- ☐ **Vision**: photo + album ONLY — `showAttachDocument=false`, `showAudioPicker=false`
-  (removes attach-doc, item 5). Verify image support stays on.
-- ☐ **Notes**: adopt `MessageInputText` in `RagScreen` (replaces the bespoke `TraceChatInput`
-  usage): `showAttachDocument=true`, photo/album/audio off, voice on. Put the circular Quiz-me
-  button in `leadingSendAction`. Bridge send: extract text → `RagViewModel.ask`; extract
-  `ChatMessageFile`s → `RagViewModel.ingestDocument`. Keep Notes' own transcript/quiz rendering.
-- ☐ Build green; commit.
+- ☑ Split the `+`-menu gating in `MessageInputText`: the three items now gate on
+  `showAttachDocument` (document) and `showImagePicker` (Take picture / Pick from album)
+  independently. Threaded through `ChatView` → `ChatPanel` → `ChatViewWrapper` → `LlmChatScreen`.
+  DONE in commit `bc77a7e`.
+- ☑ Added `leadingSendAction: @Composable () -> Unit` slot to `MessageInputText`'s send row
+  (renders left of the mic/send buttons). Ready for Notes' Quiz-me button. DONE `bc77a7e`.
+- ☑ **AI Chat**: `showAttachDocument=true`, `showImagePicker=true`, `showAudioPicker=true`
+  (`LlmChatTaskModule.kt:154`). No behavior change. DONE.
+- ☑ **Vision**: document attach removed — `ChatViewWrapper` call in `VisionCameraScreen.kt:124`
+  passes `showImagePicker=true` and leaves `showAttachDocument` default false (item 5). DONE.
+- ☐ **Notes**: NOT DONE. Replace the bespoke `TraceChatInput` in `RagScreen.kt` (the block at
+  ~line 251, `// ---- Compact input bar (shared TraceChatInput) ----`) with `MessageInputText`:
+    - Pass `task` (Notes task via `modelManagerViewModel.getTaskById(BuiltInTaskId.RAG)`),
+      `showAttachDocument=true`, `showImagePicker=false`, `showAudioPicker=false` (voice PTT is
+      built into MessageInputText, so it comes for free — item 2's "add voice to Notes").
+    - `leadingSendAction = { }` → a circular "Quiz me" icon button (item 2: quiz icon in a circle
+      left of send). Wire onClick → `viewModel.quiz(model, query)`.
+    - Bridge `onSendMessage: (List<ChatMessage>)`: extract `ChatMessageText.content` →
+      `viewModel.ask(model, text)`; extract `ChatMessageFile`s → `viewModel.ingestDocument(...)`
+      (Notes ingests on attach, so attaching a doc should call ingest, not queue it as a message).
+    - Keep Notes' own transcript rendering (`Conversation`, quiz cards) and the attached-source
+      chips + Summarize action somewhere (they were in `TraceChatInput`'s slots — reuse
+      `AttachedSourcesRow`/`QuizSummarizeActions` above the input, or fold into leadingSendAction).
+    - CAUTION: `MessageInputText` routes sends through `IntentRouter` (`dispatchIntent`, line ~355)
+      which can hijack "file fetch"/"screen explain" phrasings. Normal note queries fall through
+      to `LLM_CHAT → onSendMessage`, so it's usually fine, but verify on device. If it's a problem,
+      keep `TraceChatInput` for Notes and just add a voice mic + Quiz-left-of-send to it instead —
+      simpler and avoids the IntentRouter. **This fallback is acceptable.**
+  - ☐ Build green; commit.
+
+**C2 START HERE:** finish the Notes bullet above, then continue to Phase 2.
 
 ### Phase 2 — Persistent Notes attachments  ☐
 Notes attachments survive app restart (save extracted text, re-embed on launch).
@@ -130,3 +148,7 @@ push to main so C2 can pull and continue from the next unchecked box.
 
 **Progress log:**
 - 2026-07-20: doc created; starting Phase 1.
+- 2026-07-20: Phase 1 shared-input foundation done (commit `bc77a7e`): flag split +
+  leadingSendAction slot; AI Chat all-on; Vision doc-attach removed. Notes input adoption still
+  pending (see Phase 1 Notes bullet). Last green commit on main handoff: pushed to main.
+  **C2 resumes at Phase 1 → Notes bullet.** Phases 2-4 untouched.
