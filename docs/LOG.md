@@ -200,3 +200,13 @@ Owner asked to complete the full redesign. On `dev-b` (`43ea005`).
   - **NOT device-tested — highest priority.** The shell changes the app entry point and switches modules in place. Verify on device: launches to AI Chat; drawer switches all 3 modules; no nested-drawer/back weirdness; image+audio work after switching; Benchmark/Settings reachable. Documented fallback if it misbehaves: per-route drawer (navigate to each module's existing route instead of inline).
   - AI Chat / Vision example prompts remain.
 - Benchmark numbers: `:app:assembleDebug` BUILD SUCCESSFUL. Final APK at repo root as `trace-new.apk` (and `Trace-beta-debug.apk`).
+## 2026-07-20 — Dev C1 — Standalone-product redesign (design system + de-fork)
+Owner brief: make Trace feel first-party, not a fork. Six phases, each build-green (`assembleDebug`), NOT device-tested. Full detail + device-test checklist in `/docs/UI_REDESIGN_HANDOFF.md`.
+- Phase A tokens (`9555e80`): Inter font (bundled, offline), dark base #111111 + neutral grey ramp, pastel per-module accents, dropped Google blue.
+- Phase B top bar (`05b5f23`): real hamburger everywhere; Notes → CenterAlignedTopAppBar with centered icon+title, new-chat, ⋮ overflow (knowledge toggle + history).
+- Phase C empty states (`3fc7b66`): shared `ModuleEmptyState` (icon+title+desc+suggestion chips) on AI Chat + Notes; AI Chat chips send via sendMessageTrigger.
+- Phase D model settings (`e5e620a`): sidebar "Model settings" opens ConfigDialog on the shared model (global); removed the per-screen Tune button.
+- Phase F cleanup (`a86332d`): removed the benchmark button under user bubbles; stripped Firebase Analytics (no-op stub, deps + plugin + init + manifest gone) — offline app ships no telemetry.
+- Phase E onboarding (`0626bab`): first-run OnboardingScreen (intro + guided model download w/ progress), gated by a new `has_completed_onboarding` settings flag.
+- Deferred: AI Chat/Vision suggestion prompts beyond Notes, full Notes→MessageInputText swap, dead toml-alias/oss-licenses prune, broad animation pass.
+- Benchmark: `:app:assembleDebug` BUILD SUCCESSFUL. Debug APK ~220MB at repo root (`Trace-debug.apk`).

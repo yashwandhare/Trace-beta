@@ -163,3 +163,44 @@ push to main so C2 can pull and continue from the next unchecked box.
     all 3 modules without nested-drawer/back weirdness, image+audio still work after switching,
     Benchmark/Settings reachable. If the in-place shell misbehaves on device, the documented
     fallback is a per-route drawer (navigate to each module's existing route instead of inline).
+
+---
+
+## Standalone-product redesign (Dev C1, 2026-07-20) — design system + de-fork
+
+Owner brief: make it feel first-party, not a fork. All phases build-green (`assembleDebug`), **NOT
+device-tested**. Final APK at repo root `Trace-debug.apk`.
+
+- **Phase A — design tokens** (`9555e80`): Nunito → **Inter** (bundled, offline; `Type.kt`). Dark
+  base **#111111** + neutral grey elevation ramp derived off it, Google blue/green tint dropped
+  (`Color.kt`). Per-module accents softened to **pastels** (bumped `pastel()`, reseeded accent hues,
+  neutral bg tints; `Theme.kt`).
+- **Phase B — unified top bar** (`05b5f23`): real **hamburger** (was back-arrow) via `ModelPageAppBar`
+  (AI Chat/Vision) + Notes rebuilt as `CenterAlignedTopAppBar` (centered icon+title, new-chat, **⋮
+  overflow** holding the knowledge-scope toggle + History).
+- **Phase C — empty states** (`3fc7b66`): shared `ui/common/ModuleEmptyState.kt` (accent icon +
+  title + description + tappable suggestion chips). AI Chat + Notes adopt it; AI Chat suggestions
+  send via `sendMessageTrigger`. Vision excluded (starts post-capture). NOTE: Notes input kept on
+  `TraceChatInput` (already cohesive: bordered/rounded + inline send + voice mic + Quiz); full
+  `MessageInputText` swap deferred to avoid IntentRouter hijacking note queries.
+- **Phase D — model settings in sidebar** (`e5e620a`): drawer "Model settings" row opens `ConfigDialog`
+  on the selected model (params only); reuses `saveModelConfig` + reinit. Shared model = global. The
+  per-screen `Tune` button + dialog removed from `ModelPageAppBar`.
+- **Phase F — cleanup/de-fork** (`a86332d`): removed the "Run benchmark" button under user bubbles
+  (+ dead dialog state). Stripped **Firebase Analytics** — `Analytics.kt` is now a no-op stub
+  (`firebaseAnalytics` always null; former `?.logEvent` sites no-op), removed firebase deps +
+  google-services plugin + `FirebaseApp.initializeApp` + APP_OPEN + AppMeasurement manifest block.
+- **Phase E — onboarding** (`0626bab`): `has_completed_onboarding` (settings.proto field 16) + repo
+  methods + VM passthroughs. `ui/onboarding/OnboardingScreen.kt` — fade/slide intro, offline
+  explainer, guided model-download CTA with live progress; auto-advances on SUCCEEDED. Nav
+  `startDestination` gates on the flag (onboarding first run → shell thereafter).
+
+**Deferred / follow-ups (not blocking):** AI Chat/Vision suggestion prompts beyond Notes; full
+Notes→MessageInputText swap; dead toml aliases (firebase-messaging/mcp/ktor) + oss-licenses prune;
+broad subtle-animation pass beyond drawer/dropdown defaults. Vestigial unused imports in
+`ModelPageAppBar`/`ChatPanel` (Kotlin warns, not errors) — safe to tidy.
+
+**DEVICE TEST CHECKLIST:** first launch → onboarding → download w/ progress → shell; every module
+shows hamburger + centered icon+title + (Notes) ⋮; Inter font + #111111 + pastel accents; Notes ⋮
+knowledge toggle works; Model settings in sidebar changes apply across modules; no benchmark button
+under bubbles; airplane-mode fully functional.
