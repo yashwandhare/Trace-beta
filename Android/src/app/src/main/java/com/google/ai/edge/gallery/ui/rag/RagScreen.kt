@@ -103,10 +103,12 @@ import com.google.ai.edge.gallery.rag.QuizItem
 import com.google.ai.edge.gallery.ui.common.Accordions
 import com.google.ai.edge.gallery.ui.common.ModuleEmptyState
 import com.google.ai.edge.gallery.ui.common.chat.ChatHistorySideSheetContent
-import com.google.ai.edge.gallery.ui.common.chat.TraceChatInput
-import com.google.ai.edge.gallery.ui.common.textandvoiceinput.HoldToDictateViewModel
+import com.google.ai.edge.gallery.ui.common.chat.ChatMessageFile
+import com.google.ai.edge.gallery.ui.common.chat.ChatMessageText
+import com.google.ai.edge.gallery.ui.common.chat.MessageInputText
 import com.google.ai.edge.gallery.ui.common.getTaskIconColor
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
+import com.google.ai.edge.gallery.ui.theme.customColors
 import kotlinx.coroutines.launch
 
 /**
@@ -176,31 +178,6 @@ fun RagScreen(
       )
     )
   }
-
-  // Voice input: reuse the app's PTT engine. Recognized text drives ask() directly
-  // (no IntentRouter), so note queries can't be hijacked into file-fetch/screen-explain.
-  val voiceViewModel: HoldToDictateViewModel = hiltViewModel()
-  val voiceUiState by voiceViewModel.uiState.collectAsState()
-  // Mirror the live transcript into the query field while listening.
-  LaunchedEffect(voiceUiState.recognizedText) {
-    if (voiceUiState.recognizing) query = voiceUiState.recognizedText
-  }
-  val startSpeech = {
-    voiceViewModel.startSpeechRecognition(
-      onDone = { text ->
-        if (text.isNotBlank() && model.instance != null) {
-          viewModel.ask(model, text.trim())
-        }
-        query = ""
-      },
-      onAmplitudeChanged = {},
-    )
-  }
-  val micPermissionLauncher =
-    rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-      if (granted) startSpeech()
-      else android.widget.Toast.makeText(context, "Microphone permission required for voice", android.widget.Toast.LENGTH_SHORT).show()
-    }
 
   // History drawer, opening from the right (RTL trick, matching AI Chat's ChatView).
   androidx.compose.runtime.CompositionLocalProvider(
@@ -311,59 +288,64 @@ fun RagScreen(
               }
             }
 
-            // ---- Compact input bar (shared TraceChatInput) ----
-            TraceChatInput(
-              value = query,
-              onValueChange = { query = it },
-              onSendText = {
-                viewModel.ask(model, it)
-                query = ""
-              },
+            // ---- Input: same MessageInputText as AI Chat / Vision ----
+            // Attached-note chips sit just above the shared input.
+            AttachedSourcesRow(
+              uiState = uiState,
               accent = accent,
-              placeholder = "Ask about your notes…",
-              enabled = uiState.indexedSources.isNotEmpty(),
-              inProgress = uiState.generating,
-              showAttach = true,
               onAttach = ::launchPicker,
-              trailingAction = {
+              onRemoveSource = { viewModel.removeSource(it) },
+              modifier = Modifier.padding(horizontal = 12.dp),
+            )
+            uiState.errorMessage?.let { error ->
+              Text(
+                error,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+              )
+            }
+            MessageInputText(
+              task = task,
+              modelManagerViewModel = modelManagerViewModel,
+              curMessage = query,
+              isResettingSession = false,
+              inProgress = uiState.generating,
+              imageCount = 0,
+              audioClipMessageCount = 0,
+              modelInitializing = false,
+              textFieldPlaceHolderRes = com.google.ai.edge.gallery.R.string.text_input_placeholder_llm_chat,
+              onValueChanged = { query = it },
+              onAmplitudeChanged = {},
+              showAttachDocument = true,
+              // Circular Quiz button just left of the mic (via the send-row leading slot).
+              leadingSendAction = {
                 IconButton(
-                  onClick = {
-                    if (voiceUiState.recognizing) {
-                      voiceViewModel.stopSpeechRecognition()
-                    } else if (androidx.core.content.ContextCompat.checkSelfPermission(
-                        context, android.Manifest.permission.RECORD_AUDIO
-                      ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                    ) {
-                      startSpeech()
-                    } else {
-                      micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
-                    }
-                  },
-                  enabled = uiState.indexedSources.isNotEmpty(),
+                  onClick = { viewModel.quiz(model, query); query = "" },
+                  enabled = uiState.indexedSources.isNotEmpty() && !uiState.generating,
+                  modifier =
+                    Modifier.size(40.dp)
+                      .background(accent.copy(alpha = 0.18f), androidx.compose.foundation.shape.CircleShape),
                 ) {
                   Icon(
-                    Icons.Rounded.Mic,
-                    contentDescription = if (voiceUiState.recognizing) "Stop listening" else "Voice input",
-                    tint = if (voiceUiState.recognizing) MaterialTheme.colorScheme.error else accent,
+                    Icons.Rounded.AutoAwesome,
+                    contentDescription = "Quiz me",
+                    tint = accent,
+                    modifier = Modifier.size(20.dp),
                   )
                 }
               },
-              leadingContent = {
-                AttachedSourcesRow(
-                  uiState = uiState,
-                  accent = accent,
-                  onAttach = ::launchPicker,
-                  onRemoveSource = { viewModel.removeSource(it) },
-                )
-              },
-              quickActions = {
-                QuizSummarizeActions(
-                  enabled = uiState.indexedSources.isNotEmpty() && !uiState.generating,
-                  accent = accent,
-                  onQuiz = { viewModel.quiz(model, query); query = "" },
-                  onSummarize = { viewModel.summarize(model, query); query = "" },
-                  error = uiState.errorMessage,
-                )
+              onSendMessage = { messages ->
+                // Attached documents → ingest into the notes index; text → grounded ask.
+                messages.filterIsInstance<ChatMessageFile>().forEach { file ->
+                  file.uris.forEach { uri -> viewModel.ingestDocument(context, uri) }
+                }
+                val text =
+                  messages.filterIsInstance<ChatMessageText>().joinToString("\n") { it.content }.trim()
+                if (text.isNotEmpty()) {
+                  viewModel.ask(model, text)
+                }
+                query = ""
               },
             )
           }
@@ -410,7 +392,7 @@ private fun Conversation(uiState: RagUiState, accent: Color) {
 private fun UserBubble(text: String) {
   Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
     Surface(
-      color = MaterialTheme.colorScheme.primary,
+      color = MaterialTheme.customColors.userBubbleBgColor,
       shape = RoundedCornerShape(18.dp, 18.dp, 4.dp, 18.dp),
       modifier = Modifier.widthIn(max = 300.dp),
     ) {
@@ -418,7 +400,7 @@ private fun UserBubble(text: String) {
         text,
         modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
         style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onPrimary,
+        color = MaterialTheme.colorScheme.onSurface,
       )
     }
   }
@@ -429,7 +411,7 @@ private fun AssistantTextBubble(message: RagMessage.AssistantText, accent: Color
   Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
     Column(modifier = Modifier.widthIn(max = 320.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
       Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        color = MaterialTheme.customColors.agentBubbleBgColor,
         shape = RoundedCornerShape(18.dp, 18.dp, 18.dp, 4.dp),
       ) {
         Text(
@@ -650,9 +632,10 @@ private fun AttachedSourcesRow(
   accent: Color,
   onAttach: () -> Unit,
   onRemoveSource: (String) -> Unit,
+  modifier: Modifier = Modifier,
 ) {
   Row(
-    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+    modifier = modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
     horizontalArrangement = Arrangement.spacedBy(8.dp),
     verticalAlignment = Alignment.CenterVertically,
   ) {
@@ -677,53 +660,6 @@ private fun AttachedSourcesRow(
           Icon(Icons.Rounded.Close, contentDescription = "Remove $source", modifier = Modifier.size(16.dp))
         },
       )
-    }
-  }
-}
-
-/** Quiz / Summarize quick-action chips + any error text. */
-@Composable
-private fun QuizSummarizeActions(
-  enabled: Boolean,
-  accent: Color,
-  onQuiz: () -> Unit,
-  onSummarize: () -> Unit,
-  error: String?,
-) {
-  Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      QuickAction(icon = Icons.Rounded.AutoAwesome, label = "Quiz me", enabled = enabled, accent = accent, onClick = onQuiz)
-      QuickAction(icon = Icons.Rounded.Summarize, label = "Summarize", enabled = enabled, accent = accent, onClick = onSummarize)
-    }
-    error?.let {
-      Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-    }
-  }
-}
-
-@Composable
-private fun QuickAction(
-  icon: androidx.compose.ui.graphics.vector.ImageVector,
-  label: String,
-  enabled: Boolean,
-  accent: Color,
-  onClick: () -> Unit,
-) {
-  val tint = if (enabled) accent else MaterialTheme.colorScheme.onSurfaceVariant
-  Surface(
-    onClick = onClick,
-    enabled = enabled,
-    shape = CircleShape,
-    color = MaterialTheme.colorScheme.surfaceContainerHighest,
-    modifier = Modifier.height(36.dp),
-  ) {
-    Row(
-      verticalAlignment = Alignment.CenterVertically,
-      modifier = Modifier.padding(horizontal = 14.dp).fillMaxSize(),
-      horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-      Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
-      Text(label, style = MaterialTheme.typography.labelLarge, color = tint)
     }
   }
 }

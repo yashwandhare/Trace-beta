@@ -52,6 +52,8 @@ import androidx.compose.ui.unit.dp
 import com.google.ai.edge.gallery.data.BuiltInTaskId
 import com.google.ai.edge.gallery.data.ModelDownloadStatusType
 import com.google.ai.edge.gallery.ui.common.getTaskIconColor
+import com.google.ai.edge.gallery.ui.common.humanReadableSize
+import com.google.ai.edge.gallery.ui.common.formatToHourMinSecond
 import com.google.ai.edge.gallery.ui.common.modelitem.calculateDownloadProgress
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 
@@ -135,6 +137,28 @@ fun OnboardingScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
               )
+              if (statusType == ModelDownloadStatusType.IN_PROGRESS && status != null && status.totalBytes > 0) {
+                Text(
+                  buildString {
+                    append(status.receivedBytes.humanReadableSize(extraDecimalForGbAndAbove = true))
+                    append(" of ")
+                    append(status.totalBytes.humanReadableSize())
+                    if (status.bytesPerSecond > 0) {
+                      append(" · ")
+                      append(status.bytesPerSecond.humanReadableSize())
+                      append("/s")
+                    }
+                    if (status.remainingMs > 0) {
+                      append(" · ")
+                      append(status.remainingMs.formatToHourMinSecond())
+                      append(" left")
+                    }
+                  },
+                  style = MaterialTheme.typography.bodySmall,
+                  color = MaterialTheme.colorScheme.onSurfaceVariant,
+                  textAlign = TextAlign.Center,
+                )
+              }
             }
           }
           else -> {
