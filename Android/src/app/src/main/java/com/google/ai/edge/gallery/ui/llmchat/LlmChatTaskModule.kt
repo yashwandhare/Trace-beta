@@ -32,6 +32,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -62,6 +65,9 @@ import com.google.ai.edge.gallery.filefetch.FileFetcher
 import com.google.ai.edge.gallery.ui.common.chat.ChatMessageAudioClip
 import com.google.ai.edge.gallery.ui.common.chat.ChatMessageText
 import com.google.ai.edge.gallery.ui.common.chat.ChatSide
+import com.google.ai.edge.gallery.ui.common.ModuleEmptyState
+import com.google.ai.edge.gallery.ui.common.chat.SendMessageTrigger
+import com.google.ai.edge.gallery.ui.common.getTaskIconColor
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // AI Chat.
@@ -136,12 +142,15 @@ class LlmChatTask @Inject constructor() : CustomTask {
     val uiSystemPrompt by viewModel.uiSystemPrompt.collectAsState()
     val systemPromptUpdatedMessage = stringResource(R.string.system_prompt_updated)
 
+    var sendTrigger by remember { mutableStateOf<SendMessageTrigger?>(null) }
+
     LlmChatScreen(
       modelManagerViewModel = myData.modelManagerViewModel,
       navigateUp = myData.onNavUp,
       viewModel = viewModel,
       allowEditingSystemPrompt = true,
       curSystemPrompt = uiSystemPrompt,
+      sendMessageTrigger = sendTrigger,
       onSystemPromptChanged = { newPrompt ->
         val selectedModel = myData.modelManagerViewModel.uiState.value.selectedModel
         viewModel.applySystemPromptChange(
@@ -157,23 +166,18 @@ class LlmChatTask @Inject constructor() : CustomTask {
       composableBelowMessageList = { model ->
         // Voice input (PTT) lives inside MessageInputText; nothing to render here.
       },
-      emptyStateComposable = {
-        Box(modifier = Modifier.fillMaxSize()) {
-          Column(
-            modifier =
-              Modifier.align(Alignment.Center).padding(horizontal = 48.dp).padding(bottom = 48.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-          ) {
-            Text(stringResource(R.string.aichat_emptystate_title), style = emptyStateTitle)
-            Text(
-              stringResource(R.string.aichat_emptystate_content),
-              style = emptyStateContent,
-              color = MaterialTheme.colorScheme.onSurfaceVariant,
-              textAlign = TextAlign.Center,
-            )
-          }
-        }
+      emptyStateComposable = { model ->
+        ModuleEmptyState(
+          icon = Icons.Outlined.Forum,
+          accent = getTaskIconColor(task),
+          title = stringResource(R.string.aichat_emptystate_title),
+          description = stringResource(R.string.aichat_emptystate_content),
+          suggestions = listOf("Explain a concept", "Draft a message", "Brainstorm ideas"),
+          onSuggestionClick = { text ->
+            sendTrigger =
+              SendMessageTrigger(model, listOf(ChatMessageText(content = text, side = ChatSide.USER)))
+          },
+        )
       },
       onBenchmarkScreenClicked = myData.onBenchmarkScreenClicked
     )

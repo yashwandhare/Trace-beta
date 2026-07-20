@@ -101,6 +101,7 @@ import com.google.ai.edge.gallery.rag.Citation
 import com.google.ai.edge.gallery.rag.KnowledgeScope
 import com.google.ai.edge.gallery.rag.QuizItem
 import com.google.ai.edge.gallery.ui.common.Accordions
+import com.google.ai.edge.gallery.ui.common.ModuleEmptyState
 import com.google.ai.edge.gallery.ui.common.chat.ChatHistorySideSheetContent
 import com.google.ai.edge.gallery.ui.common.chat.TraceChatInput
 import com.google.ai.edge.gallery.ui.common.textandvoiceinput.HoldToDictateViewModel
@@ -602,48 +603,20 @@ private fun Flashcard(item: QuizItem, accent: Color) {
 
 @Composable
 private fun EmptyState(hasNotes: Boolean, accent: Color, onExample: (String) -> Unit = {}) {
-  Column(
-    modifier = Modifier.fillMaxSize().padding(32.dp),
-    horizontalAlignment = Alignment.CenterHorizontally,
-    verticalArrangement = Arrangement.Center,
-  ) {
-    Icon(Icons.Rounded.MenuBook, contentDescription = null, tint = accent, modifier = Modifier.size(48.dp))
-    Spacer(Modifier.height(16.dp))
-    Text(
-      if (hasNotes) "Ask, quiz, or summarize" else "Study from your own notes",
-      style = MaterialTheme.typography.titleMedium,
-      fontWeight = FontWeight.Bold,
-      textAlign = TextAlign.Center,
-    )
-    Spacer(Modifier.height(8.dp))
-    Text(
+  ModuleEmptyState(
+    icon = Icons.Rounded.MenuBook,
+    accent = accent,
+    title = if (hasNotes) "Ask, quiz, or summarize" else "Study from your own notes",
+    description =
       if (hasNotes)
         "Type a question about your notes, or tap Quiz me or Summarize. You can keep the conversation going."
       else
         "Attach a note or document below. It's indexed on-device and never leaves your phone.",
-      style = MaterialTheme.typography.bodyMedium,
-      color = MaterialTheme.colorScheme.onSurfaceVariant,
-      textAlign = TextAlign.Center,
-    )
-    // Tappable example prompts once notes are indexed.
-    if (hasNotes) {
-      Spacer(Modifier.height(20.dp))
-      listOf("Summarize my notes", "Quiz me", "Explain the key concepts").forEach { example ->
-        Surface(
-          onClick = { onExample(example) },
-          color = MaterialTheme.colorScheme.surfaceContainerHigh,
-          shape = RoundedCornerShape(14.dp),
-          modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        ) {
-          Text(
-            example,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            style = MaterialTheme.typography.bodyMedium,
-          )
-        }
-      }
-    }
-  }
+    suggestions =
+      if (hasNotes) listOf("Summarize my notes", "Quiz me", "Explain the key concepts")
+      else emptyList(),
+    onSuggestionClick = onExample,
+  )
 }
 
 @Composable
