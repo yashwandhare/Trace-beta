@@ -188,3 +188,15 @@ Resumed `docs/UI_REDESIGN_HANDOFF.md` from C1's handoff point. On `dev-b`.
   - **Phase 3 (app shell + left drawer) deferred** — it changes the nav entry point and nests drawers; needs device iteration. Flagged for whoever resumes: `initializeModel` skips re-init keyed by MODEL name only (not task), so a shell switching modules over one model needs `force=true` re-init or the model keeps the first task's supportImage/supportAudio flags.
   - Phase 4 (example prompts) also remains.
 - Benchmark numbers: `:app:compileDebugKotlin` + `:app:assembleDebug` BUILD SUCCESSFUL. Debug APK copied to project root.
+
+---
+
+## 2026-07-20 — Dev C2 — UI Redesign Phases 3-4 (app shell + example prompts)
+Owner asked to complete the full redesign. On `dev-b` (`43ea005`).
+- Did:
+  - **Phase 3 — app shell** (`ui/shell/AppShell.kt`): new entry point (`startDestination` → `ROUTE_SHELL`). A LEFT hamburger drawer switches AI Chat / Vision / Notes in place, with Benchmark + Settings below a divider. Low-risk variant: each module renders via its OWN existing `MainScreen` (top bar + right history drawer reused unchanged); the shell only owns the switcher; a module's back opens the switcher. `force=true` re-init on module switch fixes the model-name-keyed capability-flag issue. Old tile HomeScreen route kept for deep links/fallback.
+  - **Phase 4 — example prompts:** Notes `EmptyState` shows tappable "Summarize my notes" / "Quiz me" / "Explain the key concepts" → `ask()`. AI Chat / Vision example prompts deferred (touch the shared chat send path).
+- Broken/open:
+  - **NOT device-tested — highest priority.** The shell changes the app entry point and switches modules in place. Verify on device: launches to AI Chat; drawer switches all 3 modules; no nested-drawer/back weirdness; image+audio work after switching; Benchmark/Settings reachable. Documented fallback if it misbehaves: per-route drawer (navigate to each module's existing route instead of inline).
+  - AI Chat / Vision example prompts remain.
+- Benchmark numbers: `:app:assembleDebug` BUILD SUCCESSFUL. Final APK at repo root as `trace-new.apk` (and `Trace-beta-debug.apk`).

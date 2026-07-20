@@ -82,8 +82,14 @@ Notes attachments survive app restart (save extracted text, re-embed on launch).
   `VectorStore` on a background dispatcher; `indexedSources` repopulates so chips reappear.
 - ☑ Build green (`assembleDebug`); committed `4b801a6`.
 
-### Phase 3 — App shell + left hamburger drawer + shared top bar  ☐  (largest)
-AI Chat becomes the home surface; a left drawer switches modules; one shared top bar.
+### Phase 3 — App shell + left hamburger drawer + shared top bar  ◐  (done via low-risk variant)
+AI Chat becomes the home surface; a left drawer switches modules.
+**Built (`43ea005`, NOT device-tested):** `ui/shell/AppShell.kt` owns a LEFT `ModalNavigationDrawer`
+switching AI Chat / Vision / Notes in place + Benchmark/Settings; `startDestination` → `ROUTE_SHELL`.
+Chosen variant: each module renders through its OWN `MainScreen` (existing top bar + right history
+drawer reused unchanged) rather than suppressing internal drawers — so the ChatView/RagScreen/Vision
+`useExternalDrawer`/`hideOwnTopBar` refactors below were NOT needed. Module back opens the switcher.
+`force=true` re-init on switch handles the capability-flag gotcha.
 - ☐ `ui/shell/AppShell.kt`: owns a LEFT `ModalNavigationDrawer`; state `activeModule`
   (AI_CHAT default / VISION / NOTES); renders the active module inline (switch in place, no nav).
 - ☐ `ui/shell/AppDrawer.kt` content top→bottom: "Trace" header → **modules** (vertical,
@@ -101,12 +107,13 @@ AI Chat becomes the home surface; a left drawer switches modules; one shared top
   Keep `route_model` (deep links) + `benchmark`. HomeScreen file kept but no longer the entry.
 - ☐ Build green; commit.
 
-### Phase 4 — Example demo prompts in empty chats  ☐  (C2 may do)
+### Phase 4 — Example demo prompts in empty chats  ◐  (Notes done)
 - ☐ AI Chat & Vision: pass `emptyStateComposable` rendering 2-3 tappable prompt rows (icon+text);
-  tap → send path (Vision prompts assume an attached image).
-- ☐ Notes: example chips in `RagScreen` `EmptyState` ("Summarize my notes", "Quiz me",
-  "Explain the key concepts"); tap → `ask/quiz/summarize`.
-- ☐ Build green; commit.
+  tap → send path (Vision prompts assume an attached image). NOT done — touches the shared chat
+  send path; deferred as follow-up.
+- ☑ Notes: example chips in `RagScreen` `EmptyState` ("Summarize my notes", "Quiz me",
+  "Explain the key concepts"); tap → `ask()`. DONE (`43ea005`).
+- ☑ Build green; committed.
 
 ### Phase 5 — Icon + description module headers  ☑ (folded into Phase 3 ShellTopBar)
 - Titles: AI Chat "Chat with Trace, fully on-device" · Vision "Ask about a photo or your camera"
@@ -141,9 +148,18 @@ push to main so C2 can pull and continue from the next unchecked box.
   **C2 resumes at Phase 1 → Notes bullet.** Phases 2-4 untouched.
 - 2026-07-20 (Dev C2): Phase 1 Notes input DONE (`f792029`) — kept TraceChatInput + added voice
   mic (owner-chosen fallback). Phase 2 persistent attachments DONE (`4b801a6`). Both build-green
-  (`assembleDebug`), NOT device-tested. **Owner decision: STOP at Phase 2 for an on-device testing
-  checkpoint before Phase 3 (the app-shell rewrite touches the entry point / nested drawers and
-  needs device iteration).** Phases 3-4 remain. **Next dev resumes at Phase 3 — app shell.**
-  When resuming Phase 3, a real fork was flagged: `initializeModel` skips re-init keyed by MODEL
-  name only (not task), so switching modules over one model in a shell needs `force=true` re-init
-  or the model keeps the first task's supportImage/supportAudio flags.
+  (`assembleDebug`), NOT device-tested.
+- 2026-07-20 (Dev C2): Phases 3-4 DONE (`43ea005`), build-green, NOT device-tested. Owner asked
+  to complete the full redesign; final APK placed at repo root as `trace-new.apk`.
+  - **Phase 3 (shell):** `ui/shell/AppShell.kt` — left hamburger drawer switches AI Chat / Vision /
+    Notes in place + Benchmark/Settings; nav `startDestination` → `ROUTE_SHELL` (old tile HomeScreen
+    kept for deep links/fallback). LOW-RISK design chosen: each module renders via its OWN existing
+    `MainScreen` (top bar + right history drawer reused unchanged); shell only owns the switcher;
+    module back opens the switcher. `force=true` re-init on switch fixes the model-name-keyed
+    capability-flag gotcha.
+  - **Phase 4:** Notes `EmptyState` example chips → `ask()`. AI Chat / Vision example prompts NOT
+    done (touch the shared chat send path) — a follow-up if wanted.
+  - **NEEDS DEVICE TESTING:** entry point changed; verify app launches to AI Chat, drawer switches
+    all 3 modules without nested-drawer/back weirdness, image+audio still work after switching,
+    Benchmark/Settings reachable. If the in-place shell misbehaves on device, the documented
+    fallback is a per-route drawer (navigate to each module's existing route instead of inline).
