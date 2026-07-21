@@ -92,6 +92,15 @@ When a prescription or similar is scanned in Vision or attached in AI Chat, the 
 - **Battery Optimization:** Must handle Android Doze mode and App Standby Buckets using `setExactAndAllowWhileIdle` for `AlarmManager` to ensure notifications fire even when the device is asleep.
 - **Notifications:** Triggers real Android Notifications using dedicated Notification Channels to alert the user at the scheduled times.
 
+**Implementation (Phase 4):** `notifications/NotificationScheduleManager.kt` (Hilt `@Singleton`) owns the backend. Public API:
+- `scheduledNotifications: StateFlow<List<ScheduledNotification>>` — observable list for the Schedules UI.
+- `scheduleNotification(ScheduledNotification): Boolean` — persists + arms the alarm.
+- `removeNotification(id)` — cancels the alarm + drops it from the store.
+- `rescheduleAllNotifications()` — re-arms everything (called by `BootReceiver` on `BOOT_COMPLETED`).
+- `canScheduleExactAlarms()` / `buildExactAlarmSettingsIntent()` — capability check + a settings-intent so the UI can offer the user an exact-alarm upgrade.
+
+Non-Hilt callers (receivers) reach it via `NotificationScheduleManagerEntryPoint`. Time-critical one-shot alarms use `setExactAndAllowWhileIdle` when the OS permits exact alarms and **degrade gracefully to `setAndAllowWhileIdle`** otherwise (reminders still fire, just less precisely — the UI can prompt for the grant). Daily-repeat alarms use `setRepeating`. `NotificationReceiver` posts the notification and auto-removes non-repeating entries after they fire. Manifest declares `USE_EXACT_ALARM` + `SCHEDULE_EXACT_ALARM` (+ `RECEIVE_BOOT_COMPLETED`, `POST_NOTIFICATIONS`).
+
 ### Memory store
 The single source of truth for the user's kept records — free-text notes they author and reminders Trace generates (e.g. from a scanned prescription). This is the shared interface the Memory sidebar UI (Dev C2) binds to and that the Vision/Chat → schedule wiring writes into.
 

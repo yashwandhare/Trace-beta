@@ -41,6 +41,14 @@
     <!-- Required for re-registering scheduled notifications after device reboot (Schedules module). -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- Exact, time-critical alarms for reminders (medicine schedules etc.). USE_EXACT_ALARM is
+         granted at install on Android 13+ for alarm-centric apps; SCHEDULE_EXACT_ALARM is the
+         Android 12 fallback (user-revocable). We degrade gracefully to inexact alarms if neither
+         is available. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
+
     <uses-feature
         android:name="android.hardware.camera"
         android:required="false" />

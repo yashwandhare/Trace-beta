@@ -17,6 +17,7 @@ package com.google.ai.edge.gallery.notifications
 
 import android.app.AlarmManager
 import android.content.Context
+import android.os.Build
 import android.util.Log
 import androidx.datastore.core.CorruptionException
 import androidx.datastore.core.DataStore
@@ -64,6 +65,29 @@ constructor(@ApplicationContext private val context: Context) {
   }
 
   fun initialize() = Unit
+
+  /**
+   * Whether exact alarms can currently be scheduled. Reminders still work when
+   * this is false (they degrade to inexact alarms that may drift under Doze), so
+   * the UI can use this to *offer* the user a precision upgrade rather than block.
+   */
+  fun canScheduleExactAlarms(): Boolean {
+    val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+    return canScheduleExact(alarmManager)
+  }
+
+  /**
+   * Intent that opens the system screen where the user grants exact-alarm access
+   * (Android 12+), or null on older versions / when already granted. Launch from
+   * an Activity context (add FLAG_ACTIVITY_NEW_TASK if launched from elsewhere).
+   */
+  fun buildExactAlarmSettingsIntent(): android.content.Intent? {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || canScheduleExactAlarms()) return null
+    return android.content.Intent(
+        android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+        android.net.Uri.parse("package:${context.packageName}"),
+      )
+  }
 
   /** Loads the scheduled notifications from the disk. */
   private fun loadNotifications() {
@@ -157,7 +181,18 @@ constructor(@ApplicationContext private val context: Context) {
         AlarmManager.INTERVAL_DAY,
         pendingIntent,
       )
+    } else if (canScheduleExact(alarmManager)) {
+      // Exact alarm survives Doze — required for time-critical reminders (medicine
+      // etc.). Only used when the OS grants it; otherwise we fall through to an
+      // inexact alarm rather than throwing (setExact* throws SecurityException
+      // without permission on Android 12+).
+      alarmManager.setExactAndAllowWhileIdle(
+        AlarmManager.RTC_WAKEUP,
+        calendar.timeInMillis,
+        pendingIntent,
+      )
     } else {
+      Log.w(TAG, "Exact alarms not permitted — scheduling inexact (may drift under Doze).")
       alarmManager.setAndAllowWhileIdle(
         AlarmManager.RTC_WAKEUP,
         calendar.timeInMillis,
@@ -166,6 +201,18 @@ constructor(@ApplicationContext private val context: Context) {
     }
     return true
   }
+
+  /**
+   * Whether the app may schedule exact alarms right now. Always true below
+   * Android 12; on 12+ it depends on the (user-revocable) SCHEDULE_EXACT_ALARM /
+   * USE_EXACT_ALARM grant.
+   */
+  private fun canScheduleExact(alarmManager: AlarmManager): Boolean =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+      alarmManager.canScheduleExactAlarms()
+    } else {
+      true
+    }
 
   /** Reschedules all loaded notifications. Typically called after device boot. */
   fun rescheduleAllNotifications() {
