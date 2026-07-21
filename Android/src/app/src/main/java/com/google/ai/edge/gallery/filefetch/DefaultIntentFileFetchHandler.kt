@@ -32,27 +32,44 @@ private const val TAG = "TraceFileFetch"
  *
  * @param context Application or activity context for MediaStore access.
  */
-class DefaultIntentFileFetchHandler(private val context: Context) : IntentFileFetchHandler {
+class DefaultIntentFileFetchHandler(
+  private val context: Context,
+  /** Optional persisted SAF tree URI so documents (PDFs etc.) are searchable. */
+  private val documentTreeUri: String = "",
+) : IntentFileFetchHandler {
 
   private val fetcher = FileFetcher(context)
 
   /**
    * Returns the best matching file for [query], or null if nothing found.
    *
-   * Pass 1: Direct filename match (fast, synchronous).
-   * Pass 2: Semantic vision classification fallback (slow, ~5-20s, DEMO SCOPE).
+   * Pass 1:   Direct filename match in MediaStore (fast, media only).
+   * Pass 1.5: Direct filename match in the granted SAF document tree (PDFs/docs).
+   * Pass 2:   Semantic vision classification fallback (slow, ~5-20s, DEMO SCOPE).
    */
   override fun handleFindFile(query: String): FileResult? {
     val cleaned = cleanQuery(query)
     Log.d(TAG, "handleFindFile: raw=\"$query\" cleaned=\"$cleaned\"")
 
-    // --- Pass 1: direct filename match ---
+    // --- Pass 1: direct filename match (MediaStore, media only) ---
     val directResult = fetcher.findFile(cleaned)
     if (directResult != null) {
       Log.d(TAG, "handleFindFile: Pass 1 hit → \"${directResult.displayName}\" at ${directResult.uri}")
       return directResult
     }
-    Log.d(TAG, "handleFindFile: Pass 1 miss for \"$cleaned\" — trying semantic fallback")
+    Log.d(TAG, "handleFindFile: Pass 1 miss for \"$cleaned\"")
+
+    // --- Pass 1.5: SAF document tree (reaches PDFs/docs media perms can't see) ---
+    if (documentTreeUri.isNotBlank()) {
+      val docResult = fetcher.findInDocumentTree(documentTreeUri, cleaned).firstOrNull()
+      if (docResult != null) {
+        Log.d(TAG, "handleFindFile: Pass 1.5 (SAF tree) hit → \"${docResult.displayName}\"")
+        return docResult
+      }
+      Log.d(TAG, "handleFindFile: Pass 1.5 miss — trying semantic fallback")
+    } else {
+      Log.d(TAG, "handleFindFile: no document tree granted — skipping Pass 1.5")
+    }
 
     // --- Pass 2: semantic fallback (DEMO SCOPE) ---
     // runBlocking is acceptable here because handleFindFile is already called from a background

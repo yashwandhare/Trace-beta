@@ -271,6 +271,13 @@ constructor(
     SemanticFileMatcher.config = SemanticFileMatcher.config.copy(recentImagesCount = count)
   }
 
+  /** Persisted SAF document-tree URI for File Fetch (empty if not granted). */
+  fun getDocumentTreeUri(): String = dataStoreRepository.getDocumentTreeUri()
+
+  fun setDocumentTreeUri(uri: String) {
+    dataStoreRepository.setDocumentTreeUri(uri)
+  }
+
   override fun onCleared() {
     authService.dispose()
   }

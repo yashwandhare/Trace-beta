@@ -35,6 +35,7 @@ import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.FindInPage
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.DrawerValue
@@ -104,6 +105,7 @@ fun AppShell(
   var activeModule by remember { mutableStateOf(ShellModule.AI_CHAT) }
   var showSettings by remember { mutableStateOf(false) }
   var showModelSettings by remember { mutableStateOf(false) }
+  var showSearchScope by remember { mutableStateOf(false) }
 
   ModalNavigationDrawer(
     drawerState = drawerState,
@@ -121,6 +123,10 @@ fun AppShell(
           },
           onModelSettings = {
             showModelSettings = true
+            scope.launch { drawerState.close() }
+          },
+          onSearchScope = {
+            showSearchScope = true
             scope.launch { drawerState.close() }
           },
           onSettings = {
@@ -162,6 +168,13 @@ fun AppShell(
         )
       }
     }
+  }
+
+  if (showSearchScope) {
+    com.google.ai.edge.gallery.ui.home.SearchScopeDialog(
+      onDismissed = { showSearchScope = false },
+      viewModel = modelManagerViewModel,
+    )
   }
 
   if (showSettings) {
@@ -234,6 +247,7 @@ private fun AppDrawerContent(
   onModuleSelected: (ShellModule) -> Unit,
   onBenchmark: () -> Unit,
   onModelSettings: () -> Unit,
+  onSearchScope: () -> Unit,
   onSettings: () -> Unit,
 ) {
   Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
@@ -262,6 +276,8 @@ private fun AppDrawerContent(
     DrawerRow(icon = Icons.Rounded.Speed, label = "Benchmark", description = null, selected = false, onClick = onBenchmark)
     Spacer(Modifier.height(4.dp))
     DrawerRow(icon = Icons.Rounded.Tune, label = "Model settings", description = null, selected = false, onClick = onModelSettings)
+    Spacer(Modifier.height(4.dp))
+    DrawerRow(icon = Icons.Rounded.FindInPage, label = "File search scope", description = null, selected = false, onClick = onSearchScope)
     Spacer(Modifier.height(4.dp))
     DrawerRow(icon = Icons.Rounded.Settings, label = "Settings", description = null, selected = false, onClick = onSettings)
   }

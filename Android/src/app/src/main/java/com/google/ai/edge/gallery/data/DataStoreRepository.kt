@@ -94,6 +94,10 @@ interface DataStoreRepository {
 
   fun setHasCompletedOnboarding(completed: Boolean)
 
+  fun getDocumentTreeUri(): String
+
+  fun setDocumentTreeUri(uri: String)
+
   fun addCutout(cutout: Cutout)
 
   fun getAllCutouts(): List<Cutout>
@@ -334,6 +338,18 @@ class DefaultDataStoreRepository(
       dataStore.updateData { settings ->
         settings.toBuilder().setHasCompletedOnboarding(completed).build()
       }
+    }
+  }
+
+  override fun getDocumentTreeUri(): String {
+    return runBlocking {
+      dataStore.data.first().documentTreeUri
+    }
+  }
+
+  override fun setDocumentTreeUri(uri: String) {
+    runBlocking {
+      dataStore.updateData { settings -> settings.toBuilder().setDocumentTreeUri(uri).build() }
     }
   }
 
