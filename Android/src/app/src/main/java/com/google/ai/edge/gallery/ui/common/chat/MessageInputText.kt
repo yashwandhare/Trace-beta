@@ -179,6 +179,9 @@ fun MessageInputText(
   onMcpClicked: () -> Unit = {},
   onPickedImagesChanged: (List<Bitmap>) -> Unit = {},
   onPickedAudioClipsChanged: (List<AudioClip>) -> Unit = {},
+  // Fired when the set of attached documents changes (e.g. so a screen can
+  // ingest a doc immediately on pick rather than waiting for send).
+  onPickedFilesChanged: (List<android.net.Uri>) -> Unit = {},
   showPromptTemplatesInMenu: Boolean = false,
   showSkillsPicker: Boolean = false,
   showMcpPicker: Boolean = false,
@@ -260,6 +263,7 @@ fun MessageInputText(
   LaunchedEffect(pickedImages) { onPickedImagesChanged(pickedImages) }
 
   LaunchedEffect(pickedAudioClips) { onPickedAudioClipsChanged(pickedAudioClips) }
+  LaunchedEffect(pickedFiles) { onPickedFilesChanged(pickedFiles.map { it.first }) }
   
   var pendingFileFetchQuery by remember { mutableStateOf<String?>(null) }
   

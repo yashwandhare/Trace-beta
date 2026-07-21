@@ -564,7 +564,7 @@ fun ChatPanel(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
               ) {
-                RotationalLoader(size = 32.dp)
+                com.google.ai.edge.gallery.ui.common.StarThinkingIndicator(starSize = 22.dp)
                 Text(
                   stringResource(R.string.aichat_initializing_title),
                   style =

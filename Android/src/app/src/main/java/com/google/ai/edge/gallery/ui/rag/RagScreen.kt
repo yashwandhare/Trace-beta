@@ -84,6 +84,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -104,11 +105,11 @@ import com.google.ai.edge.gallery.rag.QuizItem
 import com.google.ai.edge.gallery.ui.common.Accordions
 import com.google.ai.edge.gallery.ui.common.ModuleEmptyState
 import com.google.ai.edge.gallery.ui.common.chat.ChatHistorySideSheetContent
-import com.google.ai.edge.gallery.ui.common.chat.ChatMessageFile
 import com.google.ai.edge.gallery.ui.common.chat.ChatMessageText
 import com.google.ai.edge.gallery.ui.common.chat.MessageInputText
 import com.google.ai.edge.gallery.ui.common.getTaskIconColor
 import com.google.ai.edge.gallery.ui.common.StarThinkingIndicator
+import com.google.ai.edge.gallery.ui.common.playfulThinkingLabel
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import com.google.ai.edge.gallery.ui.theme.customColors
 import kotlinx.coroutines.launch
@@ -151,6 +152,8 @@ fun RagScreen(
   }
 
   var query by remember { mutableStateOf("") }
+  // URIs already ingested so a doc isn't re-indexed each time the picked-files list changes.
+  val ingestedUris = remember { mutableStateListOf<android.net.Uri>() }
 
   // History drawer, opening from the right (RTL trick, matching AI Chat's ChatView).
   androidx.compose.runtime.CompositionLocalProvider(
@@ -289,6 +292,15 @@ fun RagScreen(
               onValueChanged = { query = it },
               onAmplitudeChanged = {},
               showAttachDocument = true,
+              // Index each attached document immediately on pick (don't wait for send).
+              onPickedFilesChanged = { uris ->
+                uris.forEach { uri ->
+                  if (uri !in ingestedUris) {
+                    ingestedUris.add(uri)
+                    viewModel.ingestDocument(context, uri)
+                  }
+                }
+              },
               // Circular Quiz button just left of the mic (same size as mic/send).
               leadingSendAction = {
                 IconButton(
@@ -309,10 +321,8 @@ fun RagScreen(
                 }
               },
               onSendMessage = { messages ->
-                // Attached documents → ingest into the notes index; text → grounded ask.
-                messages.filterIsInstance<ChatMessageFile>().forEach { file ->
-                  file.uris.forEach { uri -> viewModel.ingestDocument(context, uri) }
-                }
+                // Documents are ingested on pick (onPickedFilesChanged); here we
+                // only handle the typed query.
                 val text =
                   messages.filterIsInstance<ChatMessageText>().joinToString("\n") { it.content }.trim()
                 if (text.isNotEmpty()) {
@@ -356,7 +366,7 @@ private fun Conversation(uiState: RagUiState, accent: Color) {
       }
     }
     if (uiState.generating) {
-      item { GeneratingBubble(accent) }
+      item { GeneratingBubble(seed = uiState.messages.size) }
     }
   }
 }
@@ -573,7 +583,7 @@ private fun EmptyState(hasNotes: Boolean, accent: Color, onExample: (String) -> 
 }
 
 @Composable
-private fun GeneratingBubble(accent: Color) {
+private fun GeneratingBubble(seed: Int) {
   // Flat (no bubble), matching the agent message style.
   Row(
     modifier = Modifier.fillMaxWidth(),
@@ -581,7 +591,7 @@ private fun GeneratingBubble(accent: Color) {
     horizontalArrangement = Arrangement.spacedBy(10.dp),
   ) {
     StarThinkingIndicator(starSize = 16.dp)
-    Text("Thinking from your notes…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(playfulThinkingLabel(seed), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
   }
 }
 

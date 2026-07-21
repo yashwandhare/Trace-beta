@@ -84,3 +84,15 @@ fun StarThinkingIndicator(
     }
   }
 }
+
+/** Playful "the model is working" verbs, shown next to the star indicator. */
+val THINKING_VERBS = listOf(
+  "Cooking", "Brewing", "Pondering", "Percolating", "Noodling", "Mulling", "Simmering", "Musing",
+)
+
+/**
+ * A stable-per-composition playful label like "Pondering…". Varies by [seed] so
+ * different turns show different verbs without flickering within one turn.
+ */
+fun playfulThinkingLabel(seed: Int): String =
+  THINKING_VERBS[(seed % THINKING_VERBS.size + THINKING_VERBS.size) % THINKING_VERBS.size] + "…"
