@@ -61,12 +61,8 @@ fun ModelInitializationStatusChip() {
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
       ) {
-        // Circular progress indicator.
-        CircularProgressIndicator(
-          modifier = Modifier.size(14.dp),
-          strokeWidth = 2.dp,
-          color = MaterialTheme.colorScheme.onSecondaryContainer,
-        )
+        // Star thinking indicator.
+        com.google.ai.edge.gallery.ui.common.StarThinkingIndicator(starSize = 12.dp)
 
         Spacer(modifier = Modifier.width(8.dp))
 
