@@ -218,13 +218,14 @@ fun AppShell(
         }
 
         // The pending home-input query is passed into AI Chat as its initial
-        // query. It's cleared when the user returns home (see onNavUp / BackHandler),
-        // NOT here — clearing on this recomposition would null it before the model
-        // finishes initializing and the module never gets a chance to send it.
+        // query, then cleared via onInitialQueryConsumed once the module has
+        // actually queued it to send. Clearing on consumption (not on return-home)
+        // prevents a re-send when the user switches to another module and comes
+        // back — which tears down and recomposes the module, resetting its own
+        // "already sent" guard while the shell still held the query.
         val chatQuery = if (activeModule == ShellModule.AI_CHAT) pendingChatQuery else null
 
-        // Hamburger / back within a module. System back returns to home; the
-        // top-bar nav icon opens the shell sidebar (accessible from every screen).
+        // Hamburger / back within a module. System back returns to home.
         androidx.activity.compose.BackHandler(enabled = true) {
           pendingChatQuery = null
           onHome = true
@@ -238,6 +239,7 @@ fun AppShell(
                 // The module's top-bar hamburger opens the shell sidebar.
                 onNavUp = { scope.launch { drawerState.open() } },
                 initialQuery = chatQuery,
+                onInitialQueryConsumed = { pendingChatQuery = null },
                 onBenchmarkScreenClicked = { onOpenBenchmark(it.name) },
               )
           )

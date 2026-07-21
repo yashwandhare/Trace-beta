@@ -152,6 +152,9 @@ class LlmChatTask @Inject constructor() : CustomTask {
         sendTrigger =
           SendMessageTrigger(selectedModel, listOf(ChatMessageText(content = initialQuery, side = ChatSide.USER)))
         initialQuerySent = true
+        // Tell the shell the query has been consumed so it clears its held copy —
+        // otherwise switching modules and returning re-sends the same message.
+        myData.onInitialQueryConsumed()
       }
     }
 

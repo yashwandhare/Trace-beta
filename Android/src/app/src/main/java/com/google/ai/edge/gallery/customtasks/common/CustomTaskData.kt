@@ -46,5 +46,9 @@ data class CustomTaskDataForBuiltinTask(
   val onNavUp: () -> Unit,
   // The initial query to be sent to the model when the screen is first loaded.
   val initialQuery: String? = null,
+  // Invoked once the screen has actually consumed [initialQuery] (i.e. queued it
+  // to send). Lets the caller clear its held query so re-entering the screen
+  // doesn't re-send the same message.
+  val onInitialQueryConsumed: () -> Unit = {},
   val onBenchmarkScreenClicked: (com.google.ai.edge.gallery.data.Model) -> Unit = {},
 )
