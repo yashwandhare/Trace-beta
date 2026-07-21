@@ -247,7 +247,7 @@ fun RagScreen(
           },
           containerColor = MaterialTheme.colorScheme.surface,
         ) { innerPadding ->
-          Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+          Column(modifier = Modifier.fillMaxSize().padding(innerPadding).imePadding()) {
             // ---- Conversation: fills from the top ----
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
               if (uiState.messages.isEmpty() && !uiState.generating) {
