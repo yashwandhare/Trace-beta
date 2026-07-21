@@ -71,6 +71,7 @@ import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -107,6 +108,7 @@ import com.google.ai.edge.gallery.ui.common.chat.ChatMessageFile
 import com.google.ai.edge.gallery.ui.common.chat.ChatMessageText
 import com.google.ai.edge.gallery.ui.common.chat.MessageInputText
 import com.google.ai.edge.gallery.ui.common.getTaskIconColor
+import com.google.ai.edge.gallery.ui.common.StarThinkingIndicator
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import com.google.ai.edge.gallery.ui.theme.customColors
 import kotlinx.coroutines.launch
@@ -149,35 +151,6 @@ fun RagScreen(
   }
 
   var query by remember { mutableStateOf("") }
-
-  val filePicker =
-    rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-      if (uri != null) {
-        try {
-          context.contentResolver.takePersistableUriPermission(
-            uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-          )
-        } catch (_: Exception) { /* non-persistable URIs are fine */ }
-        viewModel.ingestDocument(context, uri)
-      }
-    }
-
-  fun launchPicker() {
-    filePicker.launch(
-      arrayOf(
-        "application/pdf",
-        "text/*",
-        "text/markdown",
-        "text/html",
-        // Many devices report .md / .txt as octet-stream; include it so those
-        // files aren't greyed out in the picker. DocumentExtractor sniffs the
-        // extension and reads them as UTF-8 text.
-        "application/octet-stream",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-      )
-    )
-  }
 
   // History drawer, opening from the right (RTL trick, matching AI Chat's ChatView).
   androidx.compose.runtime.CompositionLocalProvider(
@@ -292,8 +265,6 @@ fun RagScreen(
             // Attached-note chips sit just above the shared input.
             AttachedSourcesRow(
               uiState = uiState,
-              accent = accent,
-              onAttach = ::launchPicker,
               onRemoveSource = { viewModel.removeSource(it) },
               modifier = Modifier.padding(horizontal = 12.dp),
             )
@@ -318,19 +289,21 @@ fun RagScreen(
               onValueChanged = { query = it },
               onAmplitudeChanged = {},
               showAttachDocument = true,
-              // Circular Quiz button just left of the mic (via the send-row leading slot).
+              // Circular Quiz button just left of the mic (same size as mic/send).
               leadingSendAction = {
                 IconButton(
                   onClick = { viewModel.quiz(model, query); query = "" },
                   enabled = uiState.indexedSources.isNotEmpty() && !uiState.generating,
-                  modifier =
-                    Modifier.size(40.dp)
-                      .background(accent.copy(alpha = 0.18f), androidx.compose.foundation.shape.CircleShape),
+                  colors =
+                    IconButtonDefaults.iconButtonColors(
+                      containerColor = accent,
+                      disabledContainerColor = accent.copy(alpha = 0.3f),
+                    ),
                 ) {
                   Icon(
                     Icons.Rounded.AutoAwesome,
                     contentDescription = "Quiz me",
-                    tint = accent,
+                    tint = Color.Black,
                     modifier = Modifier.size(20.dp),
                   )
                 }
@@ -393,7 +366,8 @@ private fun UserBubble(text: String) {
   Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
     Surface(
       color = MaterialTheme.customColors.userBubbleBgColor,
-      shape = RoundedCornerShape(18.dp, 18.dp, 4.dp, 18.dp),
+      // Hard corner at top-right (teardrop points up), matching AI Chat.
+      shape = RoundedCornerShape(18.dp, 4.dp, 18.dp, 18.dp),
       modifier = Modifier.widthIn(max = 300.dp),
     ) {
       Text(
@@ -408,21 +382,18 @@ private fun UserBubble(text: String) {
 
 @Composable
 private fun AssistantTextBubble(message: RagMessage.AssistantText, accent: Color) {
-  Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
-    Column(modifier = Modifier.widthIn(max = 320.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-      Surface(
-        color = MaterialTheme.customColors.agentBubbleBgColor,
-        shape = RoundedCornerShape(18.dp, 18.dp, 18.dp, 4.dp),
-      ) {
-        Text(
-          message.text,
-          modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-          style = MaterialTheme.typography.bodyMedium,
-        )
-      }
-      if (message.citations.isNotEmpty()) {
-        Citations(message.citations, accent)
-      }
+  // Agent responses render flat (no bubble), matching AI Chat.
+  Column(
+    modifier = Modifier.fillMaxWidth().padding(end = 48.dp),
+    verticalArrangement = Arrangement.spacedBy(6.dp),
+  ) {
+    Text(
+      message.text,
+      style = MaterialTheme.typography.bodyMedium,
+      color = MaterialTheme.colorScheme.onSurface,
+    )
+    if (message.citations.isNotEmpty()) {
+      Citations(message.citations, accent)
     }
   }
 }
@@ -603,20 +574,14 @@ private fun EmptyState(hasNotes: Boolean, accent: Color, onExample: (String) -> 
 
 @Composable
 private fun GeneratingBubble(accent: Color) {
-  Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
-    Surface(
-      color = MaterialTheme.colorScheme.surfaceContainerHigh,
-      shape = RoundedCornerShape(18.dp, 18.dp, 18.dp, 4.dp),
-    ) {
-      Row(
-        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-      ) {
-        CircularProgressIndicator(color = accent, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
-        Text("Thinking from your notes…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-      }
-    }
+  // Flat (no bubble), matching the agent message style.
+  Row(
+    modifier = Modifier.fillMaxWidth(),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(10.dp),
+  ) {
+    StarThinkingIndicator(starSize = 16.dp)
+    Text("Thinking from your notes…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
   }
 }
 
@@ -624,34 +589,28 @@ private fun GeneratingBubble(accent: Color) {
 // Input-bar slots (composed into the shared TraceChatInput)
 // ---------------------------------------------------------------------------
 
-/** Horizontally-scrolling row of attached-note chips + an attach affordance. */
+/** Horizontally-scrolling row of attached-note chips. Attaching is handled by the input's + button. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AttachedSourcesRow(
   uiState: RagUiState,
-  accent: Color,
-  onAttach: () -> Unit,
   onRemoveSource: (String) -> Unit,
   modifier: Modifier = Modifier,
 ) {
+  if (uiState.indexedSources.isEmpty() && !uiState.ingesting) return
   Row(
     modifier = modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
     horizontalArrangement = Arrangement.spacedBy(8.dp),
     verticalAlignment = Alignment.CenterVertically,
   ) {
-    AssistChip(
-      onClick = onAttach,
-      enabled = !uiState.ingesting,
-      label = { Text(if (uiState.ingesting) "Indexing…" else "Attach") },
-      leadingIcon = {
-        if (uiState.ingesting) {
-          CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-        } else {
-          Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-        }
-      },
-      colors = AssistChipDefaults.assistChipColors(leadingIconContentColor = accent),
-    )
+    if (uiState.ingesting) {
+      AssistChip(
+        onClick = {},
+        enabled = false,
+        label = { Text("Indexing…") },
+        leadingIcon = { CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp) },
+      )
+    }
     uiState.indexedSources.forEach { source ->
       AssistChip(
         onClick = { onRemoveSource(source) },

@@ -679,6 +679,21 @@ constructor(
     return dataStoreRepository.getHasCompletedOnboarding()
   }
 
+  /** Effective system prompt for [task] (custom override or the task default). */
+  fun readSystemPrompt(task: com.google.ai.edge.gallery.data.Task): String {
+    return kotlinx.coroutines.runBlocking {
+      SystemPromptHelper.getEffectiveSystemPrompt(systemPromptRepository, task)
+    }
+  }
+
+  /** Persists a custom system prompt for [taskId] (blank clears the override). */
+  fun saveSystemPrompt(taskId: String, prompt: String) {
+    viewModelScope.launch {
+      if (prompt.isBlank()) systemPromptRepository.clearCustomSystemPrompt(taskId)
+      else systemPromptRepository.updateSystemPrompt(taskId, prompt)
+    }
+  }
+
   fun setOnboardingCompleted() {
     dataStoreRepository.setHasCompletedOnboarding(true)
   }

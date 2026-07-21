@@ -15,7 +15,7 @@
         "topP": 0.95,
         "temperature": 1.0,
         "maxTokens": 4096,
-        "accelerators": "cpu,gpu"
+        "accelerators": "gpu,cpu"
       },
       "taskTypes": ["llm_chat", "vision", "rag"],
       "capabilities": ["llm_thinking"]
