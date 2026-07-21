@@ -216,7 +216,7 @@ object SemanticFileMatcher {
             MediaStore.Images.Media.MIME_TYPE,
             MediaStore.Images.Media.SIZE,
         )
-        val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC LIMIT $limit"
+        val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
         try {
             context.contentResolver.query(
                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
@@ -230,7 +230,7 @@ object SemanticFileMatcher {
                 val mimeCol = cursor.getColumnIndex(MediaStore.Images.Media.MIME_TYPE)
                 val sizeCol = cursor.getColumnIndex(MediaStore.Images.Media.SIZE)
 
-                while (cursor.moveToNext()) {
+                while (cursor.moveToNext() && out.size < limit) {
                     val id = cursor.getLong(idCol)
                     val uri = Uri.withAppendedPath(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id.toString())
                     val uriStr = uri.toString()

@@ -160,7 +160,11 @@ class FileFetcher(private val context: Context) {
       "LOWER(${MediaStore.MediaColumns.DISPLAY_NAME}) LIKE ?"
     }
     val selectionArgs = queryTokens.map { "%$it%" }.toTypedArray()
-    val sortOrder = "${MediaStore.MediaColumns.DATE_MODIFIED} DESC LIMIT $limit"
+    // NOTE: do NOT append "LIMIT n" to the sort order — modern Android (API 30+)
+    // treats this argument as a raw ORDER BY and rejects an embedded LIMIT,
+    // making the whole query throw/return nothing. The cursor loop below caps
+    // the result count instead.
+    val sortOrder = "${MediaStore.MediaColumns.DATE_MODIFIED} DESC"
 
     var cursor: Cursor? = null
     try {
