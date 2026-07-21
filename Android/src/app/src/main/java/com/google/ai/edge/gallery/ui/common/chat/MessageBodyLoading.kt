@@ -68,7 +68,15 @@ fun MessageBodyLoading(message: ChatMessageLoading? = null) {
     verticalAlignment = Alignment.CenterVertically,
     modifier = Modifier.fillMaxWidth(),
   ) {
-    com.google.ai.edge.gallery.ui.common.StarThinkingIndicator(starSize = 16.dp)
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      com.google.ai.edge.gallery.ui.common.StarThinkingIndicator(starSize = 16.dp)
+      // A playful "the model is working" label, shown in every chat module.
+      Text(
+        com.google.ai.edge.gallery.ui.common.playfulThinkingLabel(0),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+    }
 
     if (message?.extraProgressLabel?.isNotEmpty() == true) {
       AnimatedContent(

@@ -1008,9 +1008,11 @@ fun MessageInputText(
                   }
                 }
 
-                // Stop button.
+                // Stop button — available throughout generation, including the
+                // "thinking" phase before the first token (was hidden while
+                // modelPreparing, leaving no way to cancel early).
                 if (inProgress && showStopButtonWhenInProgress) {
-                  if (!modelInitializing && !modelPreparing) {
+                  if (!modelInitializing) {
                     IconButton(
                       onClick = onStopButtonClicked,
                       colors =
@@ -1045,13 +1047,13 @@ fun MessageInputText(
                       },
                       colors =
                         IconButtonDefaults.iconButtonColors(
-                          containerColor = if (voiceUiState.recognizing) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.error,
+                          containerColor = if (voiceUiState.recognizing) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.surfaceContainerHighest,
                         ),
                     ) {
                       Icon(
                         Icons.Rounded.Mic,
                         contentDescription = "Mic",
-                        tint = if (voiceUiState.recognizing) MaterialTheme.colorScheme.onErrorContainer else Color.White,
+                        tint = if (voiceUiState.recognizing) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                       )
                     }
                     IconButton(

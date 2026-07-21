@@ -303,19 +303,22 @@ fun RagScreen(
               },
               // Circular Quiz button just left of the mic (same size as mic/send).
               leadingSendAction = {
+                val quizReady = uiState.indexedSources.isNotEmpty() && !uiState.generating
                 IconButton(
                   onClick = { viewModel.quiz(model, query); query = "" },
-                  enabled = uiState.indexedSources.isNotEmpty() && !uiState.generating,
+                  enabled = quizReady,
                   colors =
                     IconButtonDefaults.iconButtonColors(
-                      containerColor = accent,
-                      disabledContainerColor = accent.copy(alpha = 0.3f),
+                      containerColor =
+                        if (quizReady) accent else MaterialTheme.colorScheme.surfaceContainerHighest,
+                      disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                     ),
                 ) {
                   Icon(
                     Icons.Rounded.AutoAwesome,
                     contentDescription = "Quiz me",
-                    tint = Color.Black,
+                    tint =
+                      if (quizReady) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(20.dp),
                   )
                 }

@@ -307,15 +307,8 @@ fun ChatPanel(
         // Hoisted out of itemsIndexed: these depend only on task.id, so computing them
         // per-row on every recomposition was wasted work. Remembered per task.
         val customColors = MaterialTheme.customColors
-        val userBubbleColor = remember(task.id, customColors) {
-          when (task.id) {
-            BuiltInTaskId.LLM_CHAT ->
-              customColors.taskBgGradientColors.getOrNull(2)?.getOrNull(0)?.copy(alpha = 0.25f) ?: Color(0xFF64B5F6)
-            BuiltInTaskId.VISION ->
-              customColors.taskBgGradientColors.getOrNull(0)?.getOrNull(0)?.copy(alpha = 0.25f) ?: Color(0xFFE57373)
-            else -> customColors.userBubbleBgColor
-          }
-        }
+        // Cohesive scheme: every module's user bubble uses the single accent color.
+        val userBubbleColor = customColors.userBubbleBgColor
         val agentBubbleColor = customColors.agentBubbleBgColor
         // LazyColumn only composes visible items — eliminates the O(n) layout cost
         // of the previous Column+verticalScroll approach for long chat sessions.

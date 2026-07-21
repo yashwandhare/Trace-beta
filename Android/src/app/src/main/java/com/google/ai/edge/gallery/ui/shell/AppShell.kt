@@ -110,6 +110,10 @@ fun AppShell(
   val uiState by modelManagerViewModel.uiState.collectAsState()
 
   var activeModule by remember { mutableStateOf(ShellModule.AI_CHAT) }
+  // Which module the resident model was last initialized for. Re-init (force=true)
+  // only fires when this differs from activeModule, so re-entering the same module
+  // keeps the model warm instead of tearing it down.
+  var lastInitializedModule by remember { mutableStateOf<ShellModule?>(null) }
   // The app opens on the home landing screen; picking a module (or sending from
   // the home input) leaves home for that module. Back from a module returns home.
   var onHome by remember { mutableStateOf(true) }
@@ -182,7 +186,12 @@ fun AppShell(
           if (firstModel != null) {
             modelManagerViewModel.selectModel(firstModel)
             val status = uiState.modelDownloadStatus[firstModel.name]?.status
-            if (status == ModelDownloadStatusType.SUCCEEDED) {
+            // Only (re)initialize when the module actually changed since the last
+            // init — capability flags (image/audio) are task-specific, so a real
+            // module switch needs force=true. Re-entering the SAME module (e.g.
+            // home → back → AI Chat) must NOT tear the resident model down.
+            if (status == ModelDownloadStatusType.SUCCEEDED && lastInitializedModule != activeModule) {
+              lastInitializedModule = activeModule
               modelManagerViewModel.initializeModel(context, task = task, model = firstModel, force = true)
             }
           }
@@ -435,6 +444,21 @@ private fun HomeChatInput(
   onValueChange: (String) -> Unit,
   onSend: () -> Unit,
 ) {
+  val context = LocalContext.current
+  val voiceViewModel: com.google.ai.edge.gallery.ui.common.textandvoiceinput.HoldToDictateViewModel =
+    androidx.hilt.navigation.compose.hiltViewModel()
+  val voiceUiState by voiceViewModel.uiState.collectAsState()
+  // Mirror the live transcript into the field while listening.
+  androidx.compose.runtime.LaunchedEffect(voiceUiState.recognizedText) {
+    if (voiceUiState.recognizing) onValueChange(voiceUiState.recognizedText)
+  }
+  val startSpeech = {
+    voiceViewModel.startSpeechRecognition(onDone = {}, onAmplitudeChanged = {})
+  }
+  val micPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+    androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+  ) { granted -> if (granted) startSpeech() }
+
   androidx.compose.material3.Surface(
     shape = RoundedCornerShape(28.dp),
     color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -462,6 +486,29 @@ private fun HomeChatInput(
         ),
         keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = { onSend() }),
       )
+      // Mic (grey idle, red while listening).
+      androidx.compose.material3.IconButton(
+        onClick = {
+          if (voiceUiState.recognizing) voiceViewModel.stopSpeechRecognition()
+          else if (androidx.core.content.ContextCompat.checkSelfPermission(
+              context, android.Manifest.permission.RECORD_AUDIO
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+          ) startSpeech()
+          else micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+        },
+        modifier = Modifier.size(44.dp).background(
+          if (voiceUiState.recognizing) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.surfaceContainerHighest,
+          androidx.compose.foundation.shape.CircleShape,
+        ),
+      ) {
+        Icon(
+          Icons.Rounded.Mic,
+          contentDescription = "Voice input",
+          tint = if (voiceUiState.recognizing) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+          modifier = Modifier.size(20.dp),
+        )
+      }
+      Spacer(Modifier.width(4.dp))
       val canSend = value.isNotBlank()
       androidx.compose.material3.IconButton(
         onClick = onSend,
@@ -517,6 +564,7 @@ private fun AppDrawerContent(
 
     // App-wide options live on the home screen only. Inside a module the sidebar
     // is reserved for that module (its history is reachable from its own top bar).
+    // Settings is global — available on every screen.
     if (isHome) {
       Spacer(Modifier.height(12.dp))
       HorizontalDivider()
@@ -527,9 +575,12 @@ private fun AppDrawerContent(
       DrawerRow(icon = Icons.Rounded.Tune, label = "Model settings", description = null, selected = false, onClick = onModelSettings)
       Spacer(Modifier.height(4.dp))
       DrawerRow(icon = Icons.Rounded.FindInPage, label = "File search scope", description = null, selected = false, onClick = onSearchScope)
-      Spacer(Modifier.height(4.dp))
-      DrawerRow(icon = Icons.Rounded.Settings, label = "Settings", description = null, selected = false, onClick = onSettings)
     }
+
+    Spacer(Modifier.weight(1f))
+    HorizontalDivider()
+    Spacer(Modifier.height(8.dp))
+    DrawerRow(icon = Icons.Rounded.Settings, label = "Settings", description = null, selected = false, onClick = onSettings)
   }
 }
 
