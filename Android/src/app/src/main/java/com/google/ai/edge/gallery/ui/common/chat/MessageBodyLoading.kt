@@ -68,7 +68,7 @@ fun MessageBodyLoading(message: ChatMessageLoading? = null) {
     verticalAlignment = Alignment.CenterVertically,
     modifier = Modifier.fillMaxWidth(),
   ) {
-    RotationalLoader(size = 24.dp)
+    com.google.ai.edge.gallery.ui.common.StarThinkingIndicator(starSize = 16.dp)
 
     if (message?.extraProgressLabel?.isNotEmpty() == true) {
       AnimatedContent(

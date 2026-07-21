@@ -175,17 +175,25 @@ fun AppShell(
   if (showModelSettings) {
     val model = uiState.selectedModel
     val configs = remember(model.name) { model.configs }
-    if (configs.isEmpty()) {
+    val settingsTask = modelManagerViewModel.getTaskById(activeModule.taskId)
+    if (configs.isEmpty() || settingsTask == null) {
       showModelSettings = false
     } else {
+      val curSystemPrompt = remember(activeModule) { modelManagerViewModel.readSystemPrompt(settingsTask) }
       ConfigDialog(
         title = "Model settings",
         configs = configs,
         initialValues = model.configValues,
-        showSystemPromptEditorTab = false,
+        showSystemPromptEditorTab = true,
+        defaultSystemPrompt = settingsTask.defaultSystemPrompt,
+        curSystemPrompt = curSystemPrompt,
         onDismissed = { showModelSettings = false },
-        onOk = { curConfigValues, _, _ ->
+        onOk = { curConfigValues, oldSystemPrompt, newSystemPrompt ->
           showModelSettings = false
+          // Persist a changed system prompt for the active module's task.
+          if (newSystemPrompt != oldSystemPrompt) {
+            modelManagerViewModel.saveSystemPrompt(settingsTask.id, newSystemPrompt)
+          }
           // Global effect: all three modules share this one model, so editing its
           // config here applies everywhere. Reuse the same save + reinit path as
           // the old per-screen Tune dialog.
@@ -202,16 +210,17 @@ fun AppShell(
               if (config.needReinitialization) needReinit = true
             }
           }
-          if (!changed) return@ConfigDialog
-          model.prevConfigValues = model.configValues
-          model.configValues = curConfigValues
-          modelManagerViewModel.saveModelConfig(model)
-          modelManagerViewModel.updateConfigValuesUpdateTrigger()
-          if (needReinit) {
-            val task = modelManagerViewModel.getTaskById(activeModule.taskId)
-            if (task != null) {
-              modelManagerViewModel.initializeModel(context, task = task, model = model, force = true)
-            }
+          val promptChanged = newSystemPrompt != oldSystemPrompt
+          if (!changed && !promptChanged) return@ConfigDialog
+          if (changed) {
+            model.prevConfigValues = model.configValues
+            model.configValues = curConfigValues
+            modelManagerViewModel.saveModelConfig(model)
+            modelManagerViewModel.updateConfigValuesUpdateTrigger()
+          }
+          // A system-prompt change also needs a reinit to take effect.
+          if (needReinit || promptChanged) {
+            modelManagerViewModel.initializeModel(context, task = settingsTask, model = model, force = true)
           }
         },
       )
