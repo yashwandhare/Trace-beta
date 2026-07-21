@@ -93,6 +93,10 @@ message Settings {
 
   // Has the first-run onboarding been completed.
   bool has_completed_onboarding = 16;
+
+  // Persisted SAF document-tree URI granted by the user so File Fetch can search
+  // documents (PDFs etc.) that the granular media permissions can't see. Empty = not granted.
+  string document_tree_uri = 17;
 }
 
 message McpAuth {

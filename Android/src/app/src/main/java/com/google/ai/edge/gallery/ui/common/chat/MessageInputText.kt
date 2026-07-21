@@ -275,7 +275,7 @@ fun MessageInputText(
     if (allGranted && query != null) {
       android.widget.Toast.makeText(context, "Searching your files…", android.widget.Toast.LENGTH_SHORT).show()
       scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-        val result = safeFindFile(context, query)
+        val result = safeFindFile(context, query, modelManagerViewModel.getDocumentTreeUri())
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
           if (result != null) {
             val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
@@ -306,7 +306,7 @@ fun MessageInputText(
       // Run on IO — semantic fallback (Pass 2) can take up to ~20s; must not block Main.
       android.widget.Toast.makeText(context, "Searching your files\u2026", android.widget.Toast.LENGTH_SHORT).show()
       scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-        val result = safeFindFile(context, query)
+        val result = safeFindFile(context, query, modelManagerViewModel.getDocumentTreeUri())
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
           if (result != null) {
             val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
@@ -1560,10 +1560,11 @@ private class SensorObserver(context: Context) : DefaultLifecycleObserver, Senso
 private suspend fun safeFindFile(
   context: android.content.Context,
   query: String,
+  documentTreeUri: String,
 ): com.google.ai.edge.gallery.filefetch.FileResult? =
   try {
     kotlinx.coroutines.withTimeout(30_000) {
-      com.google.ai.edge.gallery.filefetch.DefaultIntentFileFetchHandler(context)
+      com.google.ai.edge.gallery.filefetch.DefaultIntentFileFetchHandler(context, documentTreeUri)
         .handleFindFile(query)
     }
   } catch (e: kotlinx.coroutines.TimeoutCancellationException) {

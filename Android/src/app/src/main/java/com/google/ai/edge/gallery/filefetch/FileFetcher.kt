@@ -76,6 +76,86 @@ class FileFetcher(private val context: Context) {
   fun findFile(query: String): FileResult? = findFiles(query, limit = 1).firstOrNull()
 
   /**
+   * Searches a user-granted SAF document tree (see [DocumentsContract]) for files
+   * whose display name contains any query token. This is how we reach documents —
+   * PDFs, docx, etc. — that the granular media permissions (READ_MEDIA_*) cannot
+   * see. Returns the first match, or null if [treeUriString] is blank/invalid or
+   * nothing matches. Recurses into subfolders.
+   */
+  fun findInDocumentTree(treeUriString: String, query: String, limit: Int = 1): List<FileResult> {
+    if (treeUriString.isBlank()) return emptyList()
+    val tokens = query.lowercase()
+      .split(Regex("[^\\p{L}\\p{N}]+"))
+      .filter { it.length >= 2 }
+      .take(6)
+    if (tokens.isEmpty()) return emptyList()
+
+    val treeUri = try { Uri.parse(treeUriString) } catch (_: Exception) { return emptyList() }
+    val results = mutableListOf<FileResult>()
+    val rootDocId = try {
+      android.provider.DocumentsContract.getTreeDocumentId(treeUri)
+    } catch (_: Exception) {
+      return emptyList()
+    }
+    searchTreeFolder(treeUri, rootDocId, tokens, limit, results)
+    Log.d(TAG, "findInDocumentTree: \"$query\" → ${results.size} hit(s)")
+    return results
+  }
+
+  private fun searchTreeFolder(
+    treeUri: Uri,
+    parentDocId: String,
+    tokens: List<String>,
+    limit: Int,
+    results: MutableList<FileResult>,
+  ) {
+    if (results.size >= limit) return
+    val childrenUri =
+      android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocId)
+    val projection = arrayOf(
+      android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+      android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+      android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE,
+      android.provider.DocumentsContract.Document.COLUMN_SIZE,
+    )
+    val subFolders = mutableListOf<String>()
+    try {
+      context.contentResolver.query(childrenUri, projection, null, null, null)?.use { c ->
+        val idCol = c.getColumnIndexOrThrow(android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+        val nameCol = c.getColumnIndexOrThrow(android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+        val mimeCol = c.getColumnIndexOrThrow(android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE)
+        val sizeCol = c.getColumnIndex(android.provider.DocumentsContract.Document.COLUMN_SIZE)
+        while (c.moveToNext() && results.size < limit) {
+          val docId = c.getString(idCol) ?: continue
+          val name = c.getString(nameCol) ?: continue
+          val mime = c.getString(mimeCol)
+          if (mime == android.provider.DocumentsContract.Document.MIME_TYPE_DIR) {
+            subFolders += docId
+            continue
+          }
+          val lower = name.lowercase()
+          if (tokens.all { lower.contains(it) }) {
+            val docUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
+            results += FileResult(
+              uri = docUri,
+              displayName = name,
+              mimeType = mime,
+              sizeBytes = if (sizeCol >= 0) c.getLong(sizeCol).takeIf { it > 0 } else null,
+            )
+          }
+        }
+      }
+    } catch (e: Exception) {
+      Log.e(TAG, "searchTreeFolder failed for docId=$parentDocId", e)
+    }
+    // Recurse into subfolders (bounded by the limit check at each entry).
+    for (folderId in subFolders) {
+      if (results.size >= limit) break
+      searchTreeFolder(treeUri, folderId, tokens, limit, results)
+    }
+  }
+
+  /**
    * Returns up to [limit] files whose display name contains [query] (case-insensitive).
    *
    * Searches general files first (documents, PDFs, text), then images, and de-duplicates
