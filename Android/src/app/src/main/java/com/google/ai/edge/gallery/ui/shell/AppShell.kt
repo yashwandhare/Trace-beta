@@ -124,6 +124,7 @@ fun AppShell(
       ModalDrawerSheet {
         AppDrawerContent(
           active = activeModule,
+          isHome = onHome,
           onHome = {
             onHome = true
             scope.launch { drawerState.close() }
@@ -187,20 +188,26 @@ fun AppShell(
           }
         }
 
-        // Consume the pending home-input query once, on entry to AI Chat.
+        // The pending home-input query is passed into AI Chat as its initial
+        // query. It's cleared when the user returns home (see onNavUp / BackHandler),
+        // NOT here — clearing on this recomposition would null it before the model
+        // finishes initializing and the module never gets a chance to send it.
         val chatQuery = if (activeModule == ShellModule.AI_CHAT) pendingChatQuery else null
-        androidx.compose.runtime.LaunchedEffect(activeModule) { pendingChatQuery = null }
 
-        // Returning from a module goes back to the home landing screen.
-        androidx.activity.compose.BackHandler(enabled = true) { onHome = true }
+        // Hamburger / back within a module. System back returns to home; the
+        // top-bar nav icon opens the shell sidebar (accessible from every screen).
+        androidx.activity.compose.BackHandler(enabled = true) {
+          pendingChatQuery = null
+          onHome = true
+        }
 
         Box(modifier = Modifier.fillMaxSize()) {
           customTask.MainScreen(
             data =
               CustomTaskDataForBuiltinTask(
                 modelManagerViewModel = modelManagerViewModel,
-                // Back / hamburger from a module returns to the home landing screen.
-                onNavUp = { onHome = true },
+                // The module's top-bar hamburger opens the shell sidebar.
+                onNavUp = { scope.launch { drawerState.open() } },
                 initialQuery = chatQuery,
                 onBenchmarkScreenClicked = { onOpenBenchmark(it.name) },
               )
@@ -333,7 +340,7 @@ private fun ShellHomeScreen(
     ) {
       Spacer(Modifier.height(8.dp))
       Text(
-        "Hi 👋",
+        "Hi, I'm Trace 👋",
         style = MaterialTheme.typography.headlineSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
       )
@@ -478,6 +485,7 @@ private fun HomeChatInput(
 @Composable
 private fun AppDrawerContent(
   active: ShellModule,
+  isHome: Boolean,
   onHome: () -> Unit,
   onModuleSelected: (ShellModule) -> Unit,
   onBenchmark: () -> Unit,
@@ -493,7 +501,7 @@ private fun AppDrawerContent(
       modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 16.dp),
     )
 
-    DrawerRow(icon = Icons.Rounded.Home, label = "Home", description = null, selected = false, onClick = onHome)
+    DrawerRow(icon = Icons.Rounded.Home, label = "Home", description = null, selected = isHome, onClick = onHome)
     Spacer(Modifier.height(4.dp))
 
     ShellModule.values().forEach { module ->
@@ -501,23 +509,27 @@ private fun AppDrawerContent(
         icon = module.icon,
         label = module.label,
         description = module.description,
-        selected = module == active,
+        selected = !isHome && module == active,
         onClick = { onModuleSelected(module) },
       )
       Spacer(Modifier.height(4.dp))
     }
 
-    Spacer(Modifier.height(12.dp))
-    HorizontalDivider()
-    Spacer(Modifier.height(12.dp))
+    // App-wide options live on the home screen only. Inside a module the sidebar
+    // is reserved for that module (its history is reachable from its own top bar).
+    if (isHome) {
+      Spacer(Modifier.height(12.dp))
+      HorizontalDivider()
+      Spacer(Modifier.height(12.dp))
 
-    DrawerRow(icon = Icons.Rounded.Speed, label = "Benchmark", description = null, selected = false, onClick = onBenchmark)
-    Spacer(Modifier.height(4.dp))
-    DrawerRow(icon = Icons.Rounded.Tune, label = "Model settings", description = null, selected = false, onClick = onModelSettings)
-    Spacer(Modifier.height(4.dp))
-    DrawerRow(icon = Icons.Rounded.FindInPage, label = "File search scope", description = null, selected = false, onClick = onSearchScope)
-    Spacer(Modifier.height(4.dp))
-    DrawerRow(icon = Icons.Rounded.Settings, label = "Settings", description = null, selected = false, onClick = onSettings)
+      DrawerRow(icon = Icons.Rounded.Speed, label = "Benchmark", description = null, selected = false, onClick = onBenchmark)
+      Spacer(Modifier.height(4.dp))
+      DrawerRow(icon = Icons.Rounded.Tune, label = "Model settings", description = null, selected = false, onClick = onModelSettings)
+      Spacer(Modifier.height(4.dp))
+      DrawerRow(icon = Icons.Rounded.FindInPage, label = "File search scope", description = null, selected = false, onClick = onSearchScope)
+      Spacer(Modifier.height(4.dp))
+      DrawerRow(icon = Icons.Rounded.Settings, label = "Settings", description = null, selected = false, onClick = onSettings)
+    }
   }
 }
 

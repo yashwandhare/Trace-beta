@@ -109,24 +109,19 @@ class MainActivity : ComponentActivity() {
           Surface(modifier = Modifier.fillMaxSize()) {
             GalleryApp(modelManagerViewModel = modelManagerViewModel)
 
-            // Opening animation: an off-white screen with the Trace mark at
-            // center; the mark grows to fill the screen, then the overlay is
-            // removed to reveal the app. Kept snappy (~550ms).
-            var startOpen by remember { mutableStateOf(false) }
+            // Opening: a static Trace mark on an off-white screen shown for a
+            // brief moment, then faded out to reveal the app. No grow animation.
+            var startFade by remember { mutableStateOf(false) }
             var openDone by remember { mutableStateOf(false) }
-            val openScale by animateFloatAsState(
-              targetValue = if (startOpen) 26f else 1f,
-              animationSpec = tween(durationMillis = 520, easing = FastOutSlowInEasing),
-              label = "openScale",
-            )
             val openAlpha by animateFloatAsState(
-              targetValue = if (startOpen) 0f else 1f,
-              animationSpec = tween(durationMillis = 200, delayMillis = 320, easing = FastOutSlowInEasing),
+              targetValue = if (startFade) 0f else 1f,
+              animationSpec = tween(durationMillis = 250, easing = FastOutSlowInEasing),
               label = "openAlpha",
             )
             LaunchedEffect(Unit) {
-              startOpen = true
-              delay(560)
+              delay(550)   // hold the mark on screen
+              startFade = true
+              delay(260)
               openDone = true
             }
             if (!openDone) {
@@ -141,11 +136,7 @@ class MainActivity : ComponentActivity() {
                   painter = painterResource(R.drawable.icon),
                   contentDescription = null,
                   tint = Color.Unspecified,
-                  modifier =
-                    Modifier.size(96.dp).graphicsLayer {
-                      scaleX = openScale
-                      scaleY = openScale
-                    },
+                  modifier = Modifier.size(96.dp),
                 )
               }
             }

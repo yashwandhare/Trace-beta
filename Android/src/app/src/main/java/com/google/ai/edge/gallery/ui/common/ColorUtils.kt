@@ -20,43 +20,20 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import com.google.ai.edge.gallery.data.Task
-import com.google.ai.edge.gallery.ui.theme.customColors
+
+// Cohesive single-accent scheme: modules no longer carry their own hue. Icons
+// and accents use the theme's primary (iOS blue); tinted backgrounds use a
+// neutral container. This intentionally collapses the old per-module palette.
 
 @Composable
-fun getTaskBgColor(task: Task): Color {
-  val colorIndex: Int = when (task.id) {
-    "llm_chat" -> 2 // Blue
-    "vision" -> 0 // Red
-    "rag" -> 3 // Yellow
-    else -> (task.index.coerceAtLeast(0)) % MaterialTheme.customColors.taskBgColors.size
-  }
-  return MaterialTheme.customColors.taskBgColors[colorIndex]
-}
+fun getTaskBgColor(task: Task): Color = MaterialTheme.colorScheme.surfaceContainerHigh
 
 @Composable
-fun getTaskBgGradientColors(task: Task): List<Color> {
-  val colorIndex: Int = when (task.id) {
-    "llm_chat" -> 2 // Blue
-    "vision" -> 0 // Red
-    "rag" -> 3 // Yellow
-    else -> (task.index.coerceAtLeast(0)) % MaterialTheme.customColors.taskBgColors.size
-  }
-  return MaterialTheme.customColors.taskBgGradientColors[colorIndex]
-}
+fun getTaskBgGradientColors(task: Task): List<Color> =
+  listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.primary)
 
 @Composable
-fun getTaskIconColor(task: Task): Color {
-  val colorIndex: Int = when (task.id) {
-    "llm_chat" -> 2 // Blue
-    "vision" -> 0 // Red
-    "rag" -> 3 // Yellow
-    else -> (task.index.coerceAtLeast(0)) % MaterialTheme.customColors.taskIconColors.size
-  }
-  return MaterialTheme.customColors.taskIconColors[colorIndex]
-}
+fun getTaskIconColor(task: Task): Color = MaterialTheme.colorScheme.primary
 
 @Composable
-fun getTaskIconColor(index: Int): Color {
-  val colorIndex: Int = (index.coerceAtLeast(0)) % MaterialTheme.customColors.taskIconColors.size
-  return MaterialTheme.customColors.taskIconColors[colorIndex]
-}
+fun getTaskIconColor(index: Int): Color = MaterialTheme.colorScheme.primary
