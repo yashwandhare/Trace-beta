@@ -273,9 +273,9 @@ fun MessageInputText(
     val allGranted = permissions.entries.all { it.value }
     val query = pendingFileFetchQuery
     if (allGranted && query != null) {
+      android.widget.Toast.makeText(context, "Searching your files…", android.widget.Toast.LENGTH_SHORT).show()
       scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-        val handler = com.google.ai.edge.gallery.filefetch.DefaultIntentFileFetchHandler(context)
-        val result = handler.handleFindFile(query)
+        val result = safeFindFile(context, query)
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
           if (result != null) {
             val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
@@ -306,8 +306,7 @@ fun MessageInputText(
       // Run on IO — semantic fallback (Pass 2) can take up to ~20s; must not block Main.
       android.widget.Toast.makeText(context, "Searching your files\u2026", android.widget.Toast.LENGTH_SHORT).show()
       scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-        val handler = com.google.ai.edge.gallery.filefetch.DefaultIntentFileFetchHandler(context)
-        val result = handler.handleFindFile(query)
+        val result = safeFindFile(context, query)
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
           if (result != null) {
             val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
@@ -1551,3 +1550,26 @@ private class SensorObserver(context: Context) : DefaultLifecycleObserver, Senso
 
   override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 }
+
+/**
+ * Runs the file-fetch lookup with a hard timeout and full exception guard, so a
+ * hung or throwing Pass-2 (semantic vision) lookup can never leave the user with
+ * no feedback at all. Returns null on timeout/failure (the caller then shows a
+ * "Could not find" toast). Must be called off the main thread.
+ */
+private suspend fun safeFindFile(
+  context: android.content.Context,
+  query: String,
+): com.google.ai.edge.gallery.filefetch.FileResult? =
+  try {
+    kotlinx.coroutines.withTimeout(30_000) {
+      com.google.ai.edge.gallery.filefetch.DefaultIntentFileFetchHandler(context)
+        .handleFindFile(query)
+    }
+  } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+    android.util.Log.e("TraceFileFetch", "handleFindFile timed out for \"$query\"", e)
+    null
+  } catch (e: Exception) {
+    android.util.Log.e("TraceFileFetch", "handleFindFile failed for \"$query\"", e)
+    null
+  }
