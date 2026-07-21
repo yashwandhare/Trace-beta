@@ -25,7 +25,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.EditNote
+import androidx.compose.material.icons.rounded.AddComment
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.Tune
@@ -147,7 +147,7 @@ fun ModelPageAppBar(
             modifier = Modifier.alpha(if (!enableActions) 0.5f else 1f),
           ) {
             Icon(
-              imageVector = Icons.Rounded.EditNote,
+              imageVector = Icons.Rounded.AddComment,
               contentDescription = stringResource(R.string.new_chat),
               tint = MaterialTheme.colorScheme.onSurface,
               modifier = Modifier.size(22.dp),

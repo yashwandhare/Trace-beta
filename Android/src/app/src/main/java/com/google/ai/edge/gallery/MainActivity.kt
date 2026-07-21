@@ -175,36 +175,13 @@ class MainActivity : ComponentActivity() {
       }
     }
 
-    // Cross-fade transition from the splash screen to the main content.
-    //
-    // The logic performs the following key actions:
-    // 1. Synchronizes Timing: It calculates the remaining duration of the default icon
-    //    animation. It then delays its own animations to ensure the custom fade-out begins just
-    //    before the original icon animation would have finished.
-    // 2. Initiates a cross-fade:
-    //    - Fade out the splash screen.
-    //    - Fade in the main content.
-    // 3. Cleans up: An `onEnd` listener on the fade-out animator calls
-    //    `splashScreenView.remove()` to properly remove the splash screen from the view hierarchy
-    //    once it's fully transparent.
+    // Hand off from the system splash to the app immediately: the opening
+    // animation (star grows from center) lives in Compose (see setContent), so
+    // the splash should exit right away rather than run its own icon animation.
     splashScreen.setOnExitAnimationListener { splashScreenView ->
       splashScreenAboutToExit = true
-
-      val now = System.currentTimeMillis()
-      val iconAnimationStartMs = splashScreenView.iconAnimationStartMillis
-      val duration = splashScreenView.iconAnimationDurationMillis
-      val fadeOut = ObjectAnimator.ofFloat(splashScreenView.view, View.ALPHA, 1f, 0f)
-      fadeOut.interpolator = DecelerateInterpolator()
-      fadeOut.duration = 300L
-      fadeOut.doOnEnd { splashScreenView.remove() }
-      lifecycleScope.launch {
-        val setContentDelay = duration - (now - iconAnimationStartMs) - 300
-        if (setContentDelay > 0) {
-          delay(setContentDelay)
-        }
-        setContent()
-        fadeOut.start()
-      }
+      setContent()
+      splashScreenView.remove()
     }
 
     enableEdgeToEdge()

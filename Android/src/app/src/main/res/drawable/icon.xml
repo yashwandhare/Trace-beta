@@ -14,23 +14,23 @@
  limitations under the License.
 -->
 
-<!-- Trace mark: a 5-spoke star/asterisk. Scaled from the source 100-viewport
-     to the 108 adaptive-icon viewport (x1.08, center 54,54). -->
+<!-- Trace mark: a 5-spoke star/asterisk, sized to sit within the adaptive-icon
+     safe zone (spokes radius ~22 from center 54,54). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
   <group>
-    <path android:strokeColor="#111111" android:strokeWidth="15.12" android:strokeLineCap="square"
-        android:pathData="M54,54 L54,21.6" />
-    <path android:strokeColor="#111111" android:strokeWidth="15.12" android:strokeLineCap="square"
-        android:pathData="M54,54 L84.78,43.96" />
-    <path android:strokeColor="#111111" android:strokeWidth="15.12" android:strokeLineCap="square"
-        android:pathData="M54,54 L73.0,80.14" />
-    <path android:strokeColor="#111111" android:strokeWidth="15.12" android:strokeLineCap="square"
-        android:pathData="M54,54 L34.99,80.14" />
-    <path android:strokeColor="#111111" android:strokeWidth="15.12" android:strokeLineCap="square"
-        android:pathData="M54,54 L23.22,43.96" />
+    <path android:strokeColor="#111111" android:strokeWidth="11" android:strokeLineCap="square"
+        android:pathData="M54,54 L54,32" />
+    <path android:strokeColor="#111111" android:strokeWidth="11" android:strokeLineCap="square"
+        android:pathData="M54,54 L74.9,47.2" />
+    <path android:strokeColor="#111111" android:strokeWidth="11" android:strokeLineCap="square"
+        android:pathData="M54,54 L66.9,71.8" />
+    <path android:strokeColor="#111111" android:strokeWidth="11" android:strokeLineCap="square"
+        android:pathData="M54,54 L41.1,71.8" />
+    <path android:strokeColor="#111111" android:strokeWidth="11" android:strokeLineCap="square"
+        android:pathData="M54,54 L33.1,47.2" />
   </group>
 </vector>
