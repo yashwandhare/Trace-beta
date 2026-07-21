@@ -67,6 +67,12 @@ open class LlmChatViewModelBase(
   // App-wide shared RAG engine (Hilt singleton) so AI Chat and the RAG module
   // query one index.
   private val sharedRagEngine: com.google.ai.edge.gallery.rag.RagEngine? = null,
+  // Phase 4 reminder wiring (Hilt singletons). Null in contexts that don't build
+  // reminders (e.g. benchmark). When both are present, [createReminderFromRequest]
+  // can turn a request + optional prescription image into a Memory entry + alarm.
+  private val memoryRepository: com.google.ai.edge.gallery.memory.MemoryRepository? = null,
+  private val notificationScheduleManager:
+    com.google.ai.edge.gallery.notifications.NotificationScheduleManager? = null,
 ) : ChatViewModel(userDataDataStore) {
   private val _uiSystemPrompt = MutableStateFlow("")
   val uiSystemPrompt = _uiSystemPrompt.asStateFlow()
@@ -90,6 +96,58 @@ open class LlmChatViewModelBase(
   /** Clears the surfaced RAG result (e.g. when the UI dismisses the quiz panel). */
   fun clearRagResponse() {
       _ragResponse.value = null
+  }
+
+  private val scheduleExtractor:
+    com.google.ai.edge.gallery.memory.ScheduleExtractor? by lazy {
+    val mem = memoryRepository
+    val sched = notificationScheduleManager
+    if (mem != null && sched != null) {
+      com.google.ai.edge.gallery.memory.ScheduleExtractor(mem, sched)
+    } else null
+  }
+
+  /**
+   * Turns a natural-language reminder request into a persisted reminder — a
+   * SYSTEM_AUTHORED Memory entry plus a scheduled alarm sharing one id (see
+   * [com.google.ai.edge.gallery.memory.ScheduleExtractor]). This is the
+   * "scan a prescription / attach a doc → ask for a reminder → it appears" flow.
+   *
+   * Runs a single silent inference on [model]; adds nothing to the chat
+   * transcript. [prescriptionImage] and [documentText] are optional grounding.
+   * [onResult] is delivered on the main thread.
+   */
+  fun createReminderFromRequest(
+    model: Model,
+    request: String,
+    prescriptionImage: android.graphics.Bitmap? = null,
+    documentText: String = "",
+    source: com.google.ai.edge.gallery.proto.MemorySource =
+      com.google.ai.edge.gallery.proto.MemorySource.MEMORY_SOURCE_VISION_PRESCRIPTION,
+    onResult: (com.google.ai.edge.gallery.memory.ScheduleExtractor.Result) -> Unit = {},
+  ) {
+    val extractor =
+      scheduleExtractor
+        ?: run {
+          onResult(
+            com.google.ai.edge.gallery.memory.ScheduleExtractor.Result.Failed(
+              "reminder wiring unavailable"
+            )
+          )
+          return
+        }
+    viewModelScope.launch(kotlinx.coroutines.Dispatchers.Default) {
+      val result =
+        extractor.extractAndSchedule(
+          model = model,
+          request = request,
+          prescriptionImage = prescriptionImage,
+          documentText = documentText,
+          source = source,
+          coroutineScope = viewModelScope,
+        )
+      kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { onResult(result) }
+    }
   }
 
   fun initTts(context: android.content.Context) {
@@ -652,4 +710,14 @@ constructor(
   systemPromptRepository: SystemPromptRepository,
   userDataDataStore: DataStore<UserData>,
   ragEngine: com.google.ai.edge.gallery.rag.RagEngine,
-) : LlmChatViewModelBase(systemPromptRepository, userDataDataStore, null, ragEngine)
+  memoryRepository: com.google.ai.edge.gallery.memory.MemoryRepository,
+  notificationScheduleManager: com.google.ai.edge.gallery.notifications.NotificationScheduleManager,
+) :
+  LlmChatViewModelBase(
+    systemPromptRepository,
+    userDataDataStore,
+    null,
+    ragEngine,
+    memoryRepository,
+    notificationScheduleManager,
+  )

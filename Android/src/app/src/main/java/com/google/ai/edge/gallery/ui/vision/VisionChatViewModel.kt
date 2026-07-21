@@ -21,8 +21,15 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class VisionChatViewModel @Inject constructor(
     systemPromptRepository: SystemPromptRepository,
-    userDataDataStore: DataStore<UserData>
-) : LlmChatViewModelBase(systemPromptRepository, userDataDataStore) {
+    userDataDataStore: DataStore<UserData>,
+    memoryRepository: com.google.ai.edge.gallery.memory.MemoryRepository,
+    notificationScheduleManager: com.google.ai.edge.gallery.notifications.NotificationScheduleManager,
+) : LlmChatViewModelBase(
+    systemPromptRepository = systemPromptRepository,
+    userDataDataStore = userDataDataStore,
+    memoryRepository = memoryRepository,
+    notificationScheduleManager = notificationScheduleManager,
+) {
 
     /**
      * Processes a single camera frame (bitmap) and an optional voice/text input,
