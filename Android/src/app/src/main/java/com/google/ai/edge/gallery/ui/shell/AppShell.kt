@@ -122,6 +122,26 @@ fun AppShell(
   var showModelSettings by remember { mutableStateOf(false) }
   var showSearchScope by remember { mutableStateOf(false) }
 
+  // Warm the AI Chat model as soon as the app launches, while the user is still
+  // on the home screen — so the first send from home is instant instead of
+  // waiting on a cold load. Marks lastInitializedModule so entering AI Chat
+  // reuses this resident instance rather than tearing it down and reloading.
+  val aiChatTask = modelManagerViewModel.getTaskById(ShellModule.AI_CHAT.taskId)
+  val aiChatModel = aiChatTask?.models?.firstOrNull()
+  val aiChatDownloadStatus = aiChatModel?.let { uiState.modelDownloadStatus[it.name]?.status }
+  androidx.compose.runtime.LaunchedEffect(aiChatDownloadStatus) {
+    if (
+      aiChatTask != null &&
+        aiChatModel != null &&
+        aiChatDownloadStatus == ModelDownloadStatusType.SUCCEEDED &&
+        lastInitializedModule == null
+    ) {
+      lastInitializedModule = ShellModule.AI_CHAT
+      modelManagerViewModel.selectModel(aiChatModel)
+      modelManagerViewModel.initializeModel(context, task = aiChatTask, model = aiChatModel, force = true)
+    }
+  }
+
   ModalNavigationDrawer(
     drawerState = drawerState,
     drawerContent = {
@@ -320,6 +340,60 @@ private fun ShellHomeScreen(
 ) {
   var query by remember { mutableStateOf("") }
   val context = LocalContext.current
+  val scope = rememberCoroutineScope()
+
+  // Home input can trigger a file fetch directly (no trip through AI Chat). The
+  // lookup needs read-media permission; the query is held while the prompt is up.
+  val intentRouter = remember(context) { com.google.ai.edge.gallery.voice.IntentRouter(context) }
+  var pendingFetchQuery by remember { mutableStateOf<String?>(null) }
+  val runFetch: (String) -> Unit = { fetchQuery ->
+    android.widget.Toast.makeText(context, "Searching your files…", android.widget.Toast.LENGTH_SHORT).show()
+    scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+      val result =
+        com.google.ai.edge.gallery.ui.common.chat.safeFindFile(
+          context, fetchQuery, modelManagerViewModel.getDocumentTreeUri()
+        )
+      kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+        if (result != null) {
+          val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+            setDataAndType(result.uri, context.contentResolver.getType(result.uri) ?: "*/*")
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+          }
+          try {
+            context.startActivity(viewIntent)
+          } catch (_: Exception) {
+            android.widget.Toast.makeText(context, "No app found to open this file", android.widget.Toast.LENGTH_SHORT).show()
+          }
+        } else {
+          android.widget.Toast.makeText(context, "Could not find: $fetchQuery", android.widget.Toast.LENGTH_SHORT).show()
+        }
+      }
+    }
+  }
+  val fetchPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+    androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+  ) { permissions ->
+    val q = pendingFetchQuery
+    if (permissions.entries.all { it.value } && q != null) runFetch(q)
+    pendingFetchQuery = null
+  }
+  val performFileFetch: (String) -> Unit = { fetchQuery ->
+    val hasPermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+      androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_MEDIA_IMAGES) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    } else {
+      androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    }
+    if (hasPermission) {
+      runFetch(fetchQuery)
+    } else {
+      pendingFetchQuery = fetchQuery
+      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+        fetchPermissionLauncher.launch(arrayOf(android.Manifest.permission.READ_MEDIA_IMAGES, android.Manifest.permission.READ_MEDIA_VIDEO, android.Manifest.permission.READ_MEDIA_AUDIO))
+      } else {
+        fetchPermissionLauncher.launch(arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE))
+      }
+    }
+  }
 
   val tiles = listOf(
     HomeTile("Vision", Icons.Outlined.PhotoCamera, ShellModule.VISION),
@@ -383,14 +457,20 @@ private fun ShellHomeScreen(
 
       Spacer(Modifier.weight(1f))
 
-      // Chat input — sending launches AI Chat with the text.
+      // Chat input — a file-fetch command opens the file right here; anything
+      // else launches AI Chat with the text.
       HomeChatInput(
         value = query,
         onValueChange = { query = it },
         onSend = {
           val text = query.trim()
           if (text.isNotEmpty()) {
-            onSendQuery(text)
+            val intent = intentRouter.routeIntent(text)
+            if (intent.type == com.google.ai.edge.gallery.voice.IntentType.FILE_FETCH) {
+              performFileFetch(intent.extractedFileName.orEmpty())
+            } else {
+              onSendQuery(text)
+            }
             query = ""
           }
         },
@@ -508,7 +588,7 @@ private fun HomeChatInput(
           modifier = Modifier.size(20.dp),
         )
       }
-      Spacer(Modifier.width(4.dp))
+      Spacer(Modifier.width(8.dp))
       val canSend = value.isNotBlank()
       androidx.compose.material3.IconButton(
         onClick = onSend,

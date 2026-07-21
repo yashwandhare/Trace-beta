@@ -1559,7 +1559,7 @@ private class SensorObserver(context: Context) : DefaultLifecycleObserver, Senso
  * no feedback at all. Returns null on timeout/failure (the caller then shows a
  * "Could not find" toast). Must be called off the main thread.
  */
-private suspend fun safeFindFile(
+internal suspend fun safeFindFile(
   context: android.content.Context,
   query: String,
   documentTreeUri: String,

@@ -69,16 +69,18 @@ class IntentRouter(private val context: android.content.Context) {
         // Either signal alone is not sufficient; both must pass.
         // -----------------------------------------------------------------------
 
-        // Strong verbs: unusual in general conversation without file intent
+        // Strong verbs: unusual in general conversation without file intent.
+        // "fetch", "search", and "pull" are treated as first-class fetch verbs
+        // (bare "search test" / "pull test" work like "fetch test").
         val strongVerbRegex = Regex(
-            "(?:fetch|pull\\s+up|bring\\s+up|locate|find\\s+(?:my|the|a)|open\\s+(?:my|the))" +
+            "(?:fetch|search(?:\\s+for)?|pull(?:\\s+up)?|bring\\s+up|locate|find\\s+(?:my|the|a)|open\\s+(?:my|the))" +
             "\\s+(?:(?:my|the|a|an)\\s+)?(?:file\\s+|document\\s+|photo\\s+|image\\s+|pdf\\s+|picture\\s+)?(.+)",
             RegexOption.IGNORE_CASE
         )
 
         // Weak verbs: only a file-fetch signal when combined with an explicit file-type qualifier
         val weakVerbRegex = Regex(
-            "(?:show|get|open|read|access|find|look\\s+for|search(?:\\s+for)?)\\s+" +
+            "(?:show|get|open|read|access|find|look\\s+for)\\s+" +
             "(?:(?:my|the|a|an)\\s+)?" +
             "(?:file\\s+|document\\s+|photo\\s+|image\\s+|pdf\\s+|picture\\s+|screenshot\\s+|scan\\s+|receipt\\s+|id\\s+|card\\s+|license\\s+|certificate\\s+|form\\s+|report\\s+|resume\\s+|cv\\s+|invoice\\s+|ticket\\s+|bill\\s+|letter\\s+)" +
             "(.+)?",
