@@ -55,6 +55,7 @@
         android:fullBackupContent="@xml/backup_rules"
         android:icon="${appIcon}"
         android:label="Trace"
+        android:largeHeap="true"
         android:roundIcon="${appIcon}"
         android:supportsRtl="true"
         android:theme="@style/Theme.Gallery"

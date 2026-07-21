@@ -16,6 +16,11 @@ private const val TAG = "DocumentExtractor"
 
 private const val MAX_CHARS = 12_000
 
+// Hard ceiling on how many chars we ever pull into memory while reading a file.
+// The whole document text is truncated to MAX_CHARS anyway; reading past this
+// (via readText() on a huge or binary file) only risks OutOfMemoryError.
+private const val READ_CAP_CHARS = 200_000
+
 private const val MAX_PDF_PAGES = 20
 
 class DocumentExtractor(private val context: Context) {
@@ -40,7 +45,9 @@ class DocumentExtractor(private val context: Context) {
                 // The file picker may still surface them, so read as UTF-8 text.
                 else -> extractPlainText(uri)
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            // Throwable, not Exception: a large or binary file can trigger
+            // OutOfMemoryError (an Error) during read/decode — must not crash the app.
             Log.e(TAG, "extract failed for mimeType=$mimeType", e)
             null
         }
@@ -124,7 +131,7 @@ class DocumentExtractor(private val context: Context) {
 
     private fun extractPlainText(uri: Uri): String? {
         val text = context.contentResolver.openInputStream(uri)?.use { stream ->
-            stream.bufferedReader(Charsets.UTF_8).readText()
+            readCapped(stream.bufferedReader(Charsets.UTF_8))
         } ?: return null
 
         if (text.isBlank()) return null
@@ -139,7 +146,7 @@ class DocumentExtractor(private val context: Context) {
      */
     private fun extractHtml(uri: Uri): String? {
         val html = context.contentResolver.openInputStream(uri)?.use { stream ->
-            stream.bufferedReader(Charsets.UTF_8).readText()
+            readCapped(stream.bufferedReader(Charsets.UTF_8))
         } ?: return null
 
         val text = html
@@ -168,7 +175,7 @@ class DocumentExtractor(private val context: Context) {
             var entry = zip.nextEntry
             while (entry != null) {
                 if (entry.name == "word/document.xml") {
-                    val xml = zip.bufferedReader(Charsets.UTF_8).readText()
+                    val xml = readCapped(zip.bufferedReader(Charsets.UTF_8))
                     sb.append(stripXmlTags(xml))
                     break
                 }
@@ -190,7 +197,7 @@ class DocumentExtractor(private val context: Context) {
             var entry = zip.nextEntry
             while (entry != null) {
                 if (entry.name.startsWith("ppt/slides/slide") && entry.name.endsWith(".xml")) {
-                    val xml = zip.bufferedReader(Charsets.UTF_8).readText()
+                    val xml = readCapped(zip.bufferedReader(Charsets.UTF_8))
                     val text = stripXmlTags(xml).trim()
                     if (text.isNotBlank()) {
                         if (sb.isNotEmpty()) sb.append("\n\n")
@@ -222,6 +229,22 @@ class DocumentExtractor(private val context: Context) {
     private fun truncate(text: String): String =
         if (text.length > MAX_CHARS) text.take(MAX_CHARS) + "\n\n[document truncated at $MAX_CHARS characters]"
         else text
+
+    /**
+     * Reads at most [READ_CAP_CHARS] characters from [reader]. Prevents an
+     * OutOfMemoryError from readText() pulling a huge (or binary-read-as-text)
+     * file fully into memory — the caller truncates to MAX_CHARS afterward anyway.
+     */
+    private fun readCapped(reader: java.io.Reader): String {
+        val buf = CharArray(8 * 1024)
+        val sb = StringBuilder()
+        while (sb.length < READ_CAP_CHARS) {
+            val n = reader.read(buf)
+            if (n < 0) break
+            sb.append(buf, 0, minOf(n, READ_CAP_CHARS - sb.length))
+        }
+        return sb.toString()
+    }
 
     private fun buildTruncated(text: String, totalPages: Int, processedPages: Int): String {
         val truncated = truncate(text)
