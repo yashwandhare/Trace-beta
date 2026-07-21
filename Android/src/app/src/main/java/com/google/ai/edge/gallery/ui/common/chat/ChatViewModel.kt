@@ -186,7 +186,19 @@ abstract class ChatViewModel(val userDataDataStore: DataStore<UserData>? = null)
     if (newMessages.isNotEmpty()) {
       val lastMessage = newMessages.last()
       if (lastMessage is ChatMessageText) {
-        val newContent = processLlmResponse(response = "${lastMessage.content}${partialContent}")
+        // The existing content is already normalized from prior tokens, so we only
+        // process the newly-arrived chunk instead of re-scanning the whole response
+        // on every token (was O(n²) over a full generation). The one cross-token
+        // case is a literal backslash arriving just before an 'n' — pull a trailing
+        // backslash back into the processing window so "\n" split across two tokens
+        // still collapses to a newline.
+        val existing = lastMessage.content
+        val newContent =
+          if (existing.endsWith("\\")) {
+            existing.dropLast(1) + processLlmResponse("\\" + partialContent)
+          } else {
+            existing + processLlmResponse(partialContent)
+          }
         val newLastMessage =
           ChatMessageText(
             content = newContent,

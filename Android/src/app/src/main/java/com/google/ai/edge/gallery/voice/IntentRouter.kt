@@ -29,14 +29,11 @@ data class IntentResult(
  */
 class IntentRouter(private val context: android.content.Context) {
 
-    fun routeIntent(inputText: String): IntentResult {
-        val lowerText = inputText.lowercase().trim()
-        Log.d(TAG, "routeIntent: input=\"$inputText\"")
-
-        // -----------------------------------------------------------------------
-        // SCREEN_EXPLAIN — checked first, most specific phrases
-        // -----------------------------------------------------------------------
-        val screenPhrases = listOf(
+    companion object {
+        // Compiled once and reused across every routeIntent call — these are
+        // pure constants, so rebuilding them per send was wasted allocation on
+        // the input hot path.
+        private val SCREEN_PHRASES = listOf(
             "explain screen",
             "explain my screen",
             "what is on my screen",
@@ -49,7 +46,40 @@ class IntentRouter(private val context: android.content.Context) {
             "what do you see on screen",
             "screen",
         )
-        if (screenPhrases.any { lowerText.startsWith(it) }) {
+
+        // Strong verbs: unusual in general conversation without file intent.
+        // "fetch", "search", and "pull" are treated as first-class fetch verbs
+        // (bare "search test" / "pull test" work like "fetch test").
+        private val STRONG_VERB_REGEX = Regex(
+            "(?:fetch|search(?:\\s+for)?|pull(?:\\s+up)?|bring\\s+up|locate|find\\s+(?:my|the|a)|open\\s+(?:my|the))" +
+            "\\s+(?:(?:my|the|a|an)\\s+)?(?:file\\s+|document\\s+|photo\\s+|image\\s+|pdf\\s+|picture\\s+)?(.+)",
+            RegexOption.IGNORE_CASE
+        )
+
+        // Weak verbs: only a file-fetch signal when combined with an explicit file-type qualifier
+        private val WEAK_VERB_REGEX = Regex(
+            "(?:show|get|open|read|access|find|look\\s+for)\\s+" +
+            "(?:(?:my|the|a|an)\\s+)?" +
+            "(?:file\\s+|document\\s+|photo\\s+|image\\s+|pdf\\s+|picture\\s+|screenshot\\s+|scan\\s+|receipt\\s+|id\\s+|card\\s+|license\\s+|certificate\\s+|form\\s+|report\\s+|resume\\s+|cv\\s+|invoice\\s+|ticket\\s+|bill\\s+|letter\\s+)" +
+            "(.+)?",
+            RegexOption.IGNORE_CASE
+        )
+
+        // Noise words that should NOT be treated as valid file targets
+        private val NOISE_TARGETS = setOf(
+            "me", "it", "that", "this", "up", "out", "here", "there",
+            "him", "her", "them", "something", "anything", "everything"
+        )
+    }
+
+    fun routeIntent(inputText: String): IntentResult {
+        val lowerText = inputText.lowercase().trim()
+        Log.d(TAG, "routeIntent: input=\"$inputText\"")
+
+        // -----------------------------------------------------------------------
+        // SCREEN_EXPLAIN — checked first, most specific phrases
+        // -----------------------------------------------------------------------
+        if (SCREEN_PHRASES.any { lowerText.startsWith(it) }) {
             Log.d(TAG, "routeIntent: classified=SCREEN_EXPLAIN action=requestCapture")
             return IntentResult(type = IntentType.SCREEN_EXPLAIN, query = inputText)
         }
@@ -68,38 +98,13 @@ class IntentRouter(private val context: android.content.Context) {
         //
         // Either signal alone is not sufficient; both must pass.
         // -----------------------------------------------------------------------
-
-        // Strong verbs: unusual in general conversation without file intent.
-        // "fetch", "search", and "pull" are treated as first-class fetch verbs
-        // (bare "search test" / "pull test" work like "fetch test").
-        val strongVerbRegex = Regex(
-            "(?:fetch|search(?:\\s+for)?|pull(?:\\s+up)?|bring\\s+up|locate|find\\s+(?:my|the|a)|open\\s+(?:my|the))" +
-            "\\s+(?:(?:my|the|a|an)\\s+)?(?:file\\s+|document\\s+|photo\\s+|image\\s+|pdf\\s+|picture\\s+)?(.+)",
-            RegexOption.IGNORE_CASE
-        )
-
-        // Weak verbs: only a file-fetch signal when combined with an explicit file-type qualifier
-        val weakVerbRegex = Regex(
-            "(?:show|get|open|read|access|find|look\\s+for)\\s+" +
-            "(?:(?:my|the|a|an)\\s+)?" +
-            "(?:file\\s+|document\\s+|photo\\s+|image\\s+|pdf\\s+|picture\\s+|screenshot\\s+|scan\\s+|receipt\\s+|id\\s+|card\\s+|license\\s+|certificate\\s+|form\\s+|report\\s+|resume\\s+|cv\\s+|invoice\\s+|ticket\\s+|bill\\s+|letter\\s+)" +
-            "(.+)?",
-            RegexOption.IGNORE_CASE
-        )
-
-        // Noise words that should NOT be treated as valid file targets
-        val noiseTargets = setOf(
-            "me", "it", "that", "this", "up", "out", "here", "there",
-            "him", "her", "them", "something", "anything", "everything"
-        )
-
-        val strongMatch = strongVerbRegex.find(lowerText)
-        val weakMatch   = weakVerbRegex.find(lowerText)
+        val strongMatch = STRONG_VERB_REGEX.find(lowerText)
+        val weakMatch   = WEAK_VERB_REGEX.find(lowerText)
 
         val matchResult = strongMatch ?: weakMatch
         if (matchResult != null) {
             val rawTarget = matchResult.groupValues[1].trim().trimEnd('.', '!', '?')
-            val isValidTarget = rawTarget.length >= 3 && rawTarget.lowercase() !in noiseTargets
+            val isValidTarget = rawTarget.length >= 3 && rawTarget.lowercase() !in NOISE_TARGETS
 
             if (isValidTarget) {
                 Log.d(TAG, "routeIntent: classified=FILE_FETCH target=\"$rawTarget\" via=${if (strongMatch != null) "STRONG_VERB" else "WEAK_VERB+QUALIFIER"}")
