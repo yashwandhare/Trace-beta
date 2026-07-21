@@ -26,9 +26,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
@@ -36,6 +38,11 @@ import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.FindInPage
+import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.material.icons.rounded.Event
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.DrawerValue
@@ -103,6 +110,10 @@ fun AppShell(
   val uiState by modelManagerViewModel.uiState.collectAsState()
 
   var activeModule by remember { mutableStateOf(ShellModule.AI_CHAT) }
+  // The app opens on the home landing screen; picking a module (or sending from
+  // the home input) leaves home for that module. Back from a module returns home.
+  var onHome by remember { mutableStateOf(true) }
+  var pendingChatQuery by remember { mutableStateOf<String?>(null) }
   var showSettings by remember { mutableStateOf(false) }
   var showModelSettings by remember { mutableStateOf(false) }
   var showSearchScope by remember { mutableStateOf(false) }
@@ -113,8 +124,13 @@ fun AppShell(
       ModalDrawerSheet {
         AppDrawerContent(
           active = activeModule,
+          onHome = {
+            onHome = true
+            scope.launch { drawerState.close() }
+          },
           onModuleSelected = { module ->
             activeModule = module
+            onHome = false
             scope.launch { drawerState.close() }
           },
           onBenchmark = {
@@ -137,35 +153,59 @@ fun AppShell(
       }
     },
   ) {
-    // Select the active module's task + first model, and (re)initialize with THIS
-    // task's capability flags. initializeModel is keyed by model name, not task,
-    // so force=true is required or the model keeps the previous module's
-    // supportImage/supportAudio flags.
-    val task = modelManagerViewModel.getTaskById(activeModule.taskId)
-    val customTask = modelManagerViewModel.getCustomTaskByTaskId(activeModule.taskId)
+    if (onHome) {
+      ShellHomeScreen(
+        modelManagerViewModel = modelManagerViewModel,
+        onOpenDrawer = { scope.launch { drawerState.open() } },
+        onModuleClick = { module ->
+          activeModule = module
+          onHome = false
+        },
+        onSendQuery = { text ->
+          pendingChatQuery = text
+          activeModule = ShellModule.AI_CHAT
+          onHome = false
+        },
+      )
+    } else {
+      // Select the active module's task + first model, and (re)initialize with THIS
+      // task's capability flags. initializeModel is keyed by model name, not task,
+      // so force=true is required or the model keeps the previous module's
+      // supportImage/supportAudio flags.
+      val task = modelManagerViewModel.getTaskById(activeModule.taskId)
+      val customTask = modelManagerViewModel.getCustomTaskByTaskId(activeModule.taskId)
 
-    if (task != null && customTask != null) {
-      val firstModel = task.models.firstOrNull()
-      androidx.compose.runtime.LaunchedEffect(activeModule) {
-        if (firstModel != null) {
-          modelManagerViewModel.selectModel(firstModel)
-          val status = uiState.modelDownloadStatus[firstModel.name]?.status
-          if (status == ModelDownloadStatusType.SUCCEEDED) {
-            modelManagerViewModel.initializeModel(context, task = task, model = firstModel, force = true)
+      if (task != null && customTask != null) {
+        val firstModel = task.models.firstOrNull()
+        androidx.compose.runtime.LaunchedEffect(activeModule) {
+          if (firstModel != null) {
+            modelManagerViewModel.selectModel(firstModel)
+            val status = uiState.modelDownloadStatus[firstModel.name]?.status
+            if (status == ModelDownloadStatusType.SUCCEEDED) {
+              modelManagerViewModel.initializeModel(context, task = task, model = firstModel, force = true)
+            }
           }
         }
-      }
 
-      Box(modifier = Modifier.fillMaxSize()) {
-        customTask.MainScreen(
-          data =
-            CustomTaskDataForBuiltinTask(
-              modelManagerViewModel = modelManagerViewModel,
-              // Back from a module opens the module switcher instead of leaving the app.
-              onNavUp = { scope.launch { drawerState.open() } },
-              onBenchmarkScreenClicked = { onOpenBenchmark(it.name) },
-            )
-        )
+        // Consume the pending home-input query once, on entry to AI Chat.
+        val chatQuery = if (activeModule == ShellModule.AI_CHAT) pendingChatQuery else null
+        androidx.compose.runtime.LaunchedEffect(activeModule) { pendingChatQuery = null }
+
+        // Returning from a module goes back to the home landing screen.
+        androidx.activity.compose.BackHandler(enabled = true) { onHome = true }
+
+        Box(modifier = Modifier.fillMaxSize()) {
+          customTask.MainScreen(
+            data =
+              CustomTaskDataForBuiltinTask(
+                modelManagerViewModel = modelManagerViewModel,
+                // Back / hamburger from a module returns to the home landing screen.
+                onNavUp = { onHome = true },
+                initialQuery = chatQuery,
+                onBenchmarkScreenClicked = { onOpenBenchmark(it.name) },
+              )
+          )
+        }
       }
     }
   }
@@ -241,9 +281,204 @@ fun AppShell(
   }
 }
 
+/** A tile on the home landing screen. Built-in modules map to a [ShellModule]; placeholders don't. */
+private data class HomeTile(
+  val label: String,
+  val icon: ImageVector,
+  val module: ShellModule?,
+  val comingSoon: Boolean = false,
+)
+
+/**
+ * Fresh-launch home landing screen: a hamburger, a greeting, a 2x2 grid of
+ * modules (Vision, Notes, plus Schedule/Audio placeholders), and a chat input
+ * that launches AI Chat with the typed text.
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun ShellHomeScreen(
+  modelManagerViewModel: ModelManagerViewModel,
+  onOpenDrawer: () -> Unit,
+  onModuleClick: (ShellModule) -> Unit,
+  onSendQuery: (String) -> Unit,
+) {
+  var query by remember { mutableStateOf("") }
+  val context = LocalContext.current
+
+  val tiles = listOf(
+    HomeTile("Vision", Icons.Outlined.PhotoCamera, ShellModule.VISION),
+    HomeTile("Notes", Icons.AutoMirrored.Outlined.MenuBook, ShellModule.NOTES),
+    HomeTile("Schedule", Icons.Rounded.Event, null, comingSoon = true),
+    HomeTile("Audio", Icons.Rounded.Mic, null, comingSoon = true),
+  )
+
+  androidx.compose.material3.Scaffold(
+    containerColor = MaterialTheme.colorScheme.surface,
+    topBar = {
+      androidx.compose.material3.TopAppBar(
+        title = {},
+        navigationIcon = {
+          androidx.compose.material3.IconButton(onClick = onOpenDrawer) {
+            Icon(Icons.Rounded.Menu, contentDescription = "Menu")
+          }
+        },
+        colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
+          containerColor = MaterialTheme.colorScheme.surface,
+        ),
+      )
+    },
+  ) { innerPadding ->
+    Column(
+      modifier = Modifier.fillMaxSize().padding(innerPadding).padding(horizontal = 20.dp).imePadding(),
+    ) {
+      Spacer(Modifier.height(8.dp))
+      Text(
+        "Hi 👋",
+        style = MaterialTheme.typography.headlineSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+      Text(
+        "How can I help you?",
+        style = MaterialTheme.typography.headlineMedium,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onSurface,
+      )
+
+      Spacer(Modifier.height(24.dp))
+
+      // 2x2 module grid.
+      Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        tiles.chunked(2).forEach { rowTiles ->
+          Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            rowTiles.forEach { tile ->
+              HomeModuleTile(
+                tile = tile,
+                modifier = Modifier.weight(1f),
+                onClick = {
+                  if (tile.comingSoon) {
+                    android.widget.Toast.makeText(context, "${tile.label} — coming soon", android.widget.Toast.LENGTH_SHORT).show()
+                  } else tile.module?.let(onModuleClick)
+                },
+              )
+            }
+          }
+        }
+      }
+
+      Spacer(Modifier.weight(1f))
+
+      // Chat input — sending launches AI Chat with the text.
+      HomeChatInput(
+        value = query,
+        onValueChange = { query = it },
+        onSend = {
+          val text = query.trim()
+          if (text.isNotEmpty()) {
+            onSendQuery(text)
+            query = ""
+          }
+        },
+      )
+      Spacer(Modifier.height(12.dp))
+    }
+  }
+}
+
+@Composable
+private fun HomeModuleTile(
+  tile: HomeTile,
+  modifier: Modifier = Modifier,
+  onClick: () -> Unit,
+) {
+  androidx.compose.material3.Surface(
+    onClick = onClick,
+    shape = RoundedCornerShape(20.dp),
+    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    modifier = modifier.height(120.dp),
+  ) {
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+      Icon(
+        tile.icon,
+        contentDescription = null,
+        tint = MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier.size(28.dp),
+      )
+      Spacer(Modifier.weight(1f))
+      Text(
+        tile.label,
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurface,
+      )
+      if (tile.comingSoon) {
+        Text(
+          "Coming soon",
+          style = MaterialTheme.typography.labelSmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+      }
+    }
+  }
+}
+
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun HomeChatInput(
+  value: String,
+  onValueChange: (String) -> Unit,
+  onSend: () -> Unit,
+) {
+  androidx.compose.material3.Surface(
+    shape = RoundedCornerShape(28.dp),
+    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    modifier = Modifier.fillMaxWidth(),
+  ) {
+    Row(
+      modifier = Modifier.padding(start = 20.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      androidx.compose.material3.TextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = Modifier.weight(1f),
+        placeholder = { Text("Ask me anything…") },
+        maxLines = 4,
+        colors = androidx.compose.material3.TextFieldDefaults.colors(
+          focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+          unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+          disabledIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+          focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+          unfocusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+        ),
+        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+          imeAction = androidx.compose.ui.text.input.ImeAction.Send
+        ),
+        keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = { onSend() }),
+      )
+      val canSend = value.isNotBlank()
+      androidx.compose.material3.IconButton(
+        onClick = onSend,
+        enabled = canSend,
+        modifier = Modifier.size(44.dp).background(
+          if (canSend) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+          androidx.compose.foundation.shape.CircleShape,
+        ),
+      ) {
+        Icon(
+          Icons.Rounded.ArrowUpward,
+          contentDescription = "Send",
+          tint = if (canSend) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+          modifier = Modifier.size(20.dp),
+        )
+      }
+    }
+  }
+}
+
 @Composable
 private fun AppDrawerContent(
   active: ShellModule,
+  onHome: () -> Unit,
   onModuleSelected: (ShellModule) -> Unit,
   onBenchmark: () -> Unit,
   onModelSettings: () -> Unit,
@@ -257,6 +492,9 @@ private fun AppDrawerContent(
       fontWeight = FontWeight.Bold,
       modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 16.dp),
     )
+
+    DrawerRow(icon = Icons.Rounded.Home, label = "Home", description = null, selected = false, onClick = onHome)
+    Spacer(Modifier.height(4.dp))
 
     ShellModule.values().forEach { module ->
       DrawerRow(

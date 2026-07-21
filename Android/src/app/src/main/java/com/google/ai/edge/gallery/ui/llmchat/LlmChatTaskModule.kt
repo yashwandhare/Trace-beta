@@ -144,6 +144,17 @@ class LlmChatTask @Inject constructor() : CustomTask {
 
     var sendTrigger by remember { mutableStateOf<SendMessageTrigger?>(null) }
 
+    // Auto-send a query passed in from the home screen once the model is ready.
+    val initialQuery = myData.initialQuery
+    var initialQuerySent by remember { mutableStateOf(false) }
+    LaunchedEffect(selectedModel.instance, initialQuery) {
+      if (!initialQuerySent && !initialQuery.isNullOrBlank() && selectedModel.instance != null) {
+        sendTrigger =
+          SendMessageTrigger(selectedModel, listOf(ChatMessageText(content = initialQuery, side = ChatSide.USER)))
+        initialQuerySent = true
+      }
+    }
+
     LlmChatScreen(
       modelManagerViewModel = myData.modelManagerViewModel,
       navigateUp = myData.onNavUp,
