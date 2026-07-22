@@ -154,6 +154,9 @@ data class ModelManagerUiState(
   val searchScopeDocumentsEnabled: Boolean = false,
   val searchScopeRecentImagesCount: Int = 10,
 
+  // Opt-in web search (off by default; the one online feature).
+  val webSearchEnabled: Boolean = false,
+
   /** The history of text inputs entered by the user. */
   val textInputHistory: List<String> = listOf(),
   val configValuesUpdateTrigger: Long = 0L,
@@ -222,6 +225,7 @@ constructor(
 
   init {
     initSearchScopeSettings()
+    _uiState.update { it.copy(webSearchEnabled = dataStoreRepository.getWebSearchEnabled()) }
   }
 
   private fun initSearchScopeSettings() {
@@ -252,6 +256,13 @@ constructor(
     _uiState.update { it.copy(searchScopeDownloadsEnabled = enabled) }
     SemanticFileMatcher.config = SemanticFileMatcher.config.copy(downloadsEnabled = enabled)
   }
+
+  fun setWebSearchEnabled(enabled: Boolean) {
+    dataStoreRepository.setWebSearchEnabled(enabled)
+    _uiState.update { it.copy(webSearchEnabled = enabled) }
+  }
+
+  fun getWebSearchEnabled(): Boolean = dataStoreRepository.getWebSearchEnabled()
 
   fun setSearchScopeScreenshotsEnabled(enabled: Boolean) {
     dataStoreRepository.setSearchScopeScreenshotsEnabled(enabled)

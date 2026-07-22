@@ -151,6 +151,10 @@ interface DataStoreRepository {
 
   fun getSearchScopeRecentImagesCount(): Int
   fun setSearchScopeRecentImagesCount(count: Int)
+
+  // Opt-in web search (off by default; the one online feature).
+  fun getWebSearchEnabled(): Boolean
+  fun setWebSearchEnabled(enabled: Boolean)
 }
 
 /** Repository for managing data using Proto DataStore. */
@@ -533,6 +537,18 @@ class DefaultDataStoreRepository(
     runBlocking {
       dataStore.updateData { settings ->
         settings.toBuilder().setSearchScopeDownloadsEnabled(enabled).build()
+      }
+    }
+  }
+
+  override fun getWebSearchEnabled(): Boolean {
+    return runBlocking { dataStore.data.first().webSearchEnabled }
+  }
+
+  override fun setWebSearchEnabled(enabled: Boolean) {
+    runBlocking {
+      dataStore.updateData { settings ->
+        settings.toBuilder().setWebSearchEnabled(enabled).build()
       }
     }
   }

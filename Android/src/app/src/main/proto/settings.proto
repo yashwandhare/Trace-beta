@@ -97,6 +97,12 @@ message Settings {
   // Persisted SAF document-tree URI granted by the user so File Fetch can search
   // documents (PDFs etc.) that the granular media permissions can't see. Empty = not granted.
   string document_tree_uri = 17;
+
+  // Opt-in web search. OFF by default so the app stays 100% offline unless the
+  // user explicitly enables it; when on, the "websearch" keyword lets the model
+  // pull DuckDuckGo results into its context. This is the ONE feature that makes
+  // network calls, and only when deliberately turned on (see /docs/CONSTRAINTS.md).
+  bool web_search_enabled = 18;
 }
 
 message McpAuth {

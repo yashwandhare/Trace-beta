@@ -333,6 +333,68 @@ open class LlmChatViewModelBase(
     }
   }
 
+  /**
+   * Opt-in web search. When [enabled] and [input] starts with the "websearch"
+   * keyword, fetches DuckDuckGo results, prepends them as grounding context, and
+   * runs normal generation — returning true so the caller skips its own generate
+   * call. Returns false (does nothing) when web search is off or the keyword is
+   * absent, so the offline path is untouched unless the user explicitly opts in.
+   *
+   * This is the ONLY view-model path that touches the network (see
+   * /docs/CONSTRAINTS.md); it never runs unless the sidebar toggle is on.
+   */
+  fun tryHandleWebSearch(
+    model: Model,
+    input: String,
+    enabled: Boolean,
+    onFirstToken: (Model) -> Unit,
+    onDone: () -> Unit,
+    onError: (String) -> Unit,
+    interactionOrigin: InteractionOrigin,
+  ): Boolean {
+    if (!enabled) return false
+    val stripped = stripWebSearchKeyword(input) ?: return false
+
+    viewModelScope.launch(Dispatchers.Default) {
+      setInProgress(true)
+      setPreparing(true)
+      addMessage(model = model, message = ChatMessageLoading())
+      val results = com.google.ai.edge.gallery.websearch.WebSearchClient.search(stripped)
+      removeLastMessageIfLoading(model)
+
+      val augmented =
+        if (results.isEmpty()) {
+          // Offline or no hits — answer from the model alone rather than stalling.
+          stripped
+        } else {
+          com.google.ai.edge.gallery.websearch.WebSearchClient.formatForPrompt(results) +
+            "\nUsing the web results above where relevant, answer: " + stripped
+        }
+      generateResponse(
+        model = model,
+        input = augmented,
+        onFirstToken = onFirstToken,
+        onDone = onDone,
+        onError = onError,
+        interactionOrigin = interactionOrigin,
+      )
+    }
+    return true
+  }
+
+  /**
+   * Returns the query with a leading "websearch" keyword removed, or null if the
+   * input doesn't start with it. Case-insensitive; tolerates an optional colon.
+   */
+  private fun stripWebSearchKeyword(input: String): String? {
+    val trimmed = input.trimStart()
+    val lower = trimmed.lowercase()
+    val prefix = listOf("websearch:", "websearch", "web search:", "web search").firstOrNull {
+      lower.startsWith(it)
+    } ?: return null
+    return trimmed.substring(prefix.length).trim().ifBlank { null }
+  }
+
   /** Renders a [RagResponse] as human-readable chat text (UI panel is separate). */
   private fun renderRagResponseForChat(
     response: com.google.ai.edge.gallery.rag.RagResponse

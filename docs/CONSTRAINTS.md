@@ -32,6 +32,11 @@ new entry in `/DECISIONS.md` explaining why.
 - **Every feature must function with the network disabled.** No feature is complete until it's been
   tested in airplane mode. A single accidental network call anywhere breaks the entire premise of the
   product if discovered during a live demo.
+  - **One deliberate, explicit exception: opt-in web search.** `Settings.web_search_enabled` (default
+    `false`) gates the only network call in the app (`websearch/WebSearchClient.kt`, DuckDuckGo lite).
+    It is OFF until the user flips the sidebar toggle themselves — never auto-enabled, never triggered
+    by a background flow. The core airplane-mode demo must run with this toggle in its default (off)
+    state. Any new feature must NOT silently depend on this toggle being on.
 - **The model must load once and stay resident.** Never write code that reloads Gemma per-request — cold
   load is ~90-100s on target hardware, which would make the app unusable and the demo dead on arrival.
 

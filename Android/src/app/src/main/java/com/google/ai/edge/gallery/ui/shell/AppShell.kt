@@ -43,6 +43,7 @@ import androidx.compose.material.icons.rounded.Event
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.DrawerValue
@@ -174,6 +175,8 @@ fun AppShell(
             showSettings = true
             scope.launch { drawerState.close() }
           },
+          webSearchEnabled = uiState.webSearchEnabled,
+          onToggleWebSearch = { modelManagerViewModel.setWebSearchEnabled(it) },
         )
       }
     },
@@ -621,6 +624,8 @@ private fun AppDrawerContent(
   onModelSettings: () -> Unit,
   onSearchScope: () -> Unit,
   onSettings: () -> Unit,
+  webSearchEnabled: Boolean,
+  onToggleWebSearch: (Boolean) -> Unit,
 ) {
   Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
     Text(
@@ -657,6 +662,14 @@ private fun AppDrawerContent(
       DrawerRow(icon = Icons.Rounded.Tune, label = "Model settings", description = null, selected = false, onClick = onModelSettings)
       Spacer(Modifier.height(4.dp))
       DrawerRow(icon = Icons.Rounded.FindInPage, label = "File search scope", description = null, selected = false, onClick = onSearchScope)
+      Spacer(Modifier.height(4.dp))
+      DrawerToggleRow(
+        icon = Icons.Rounded.Public,
+        label = "Web search",
+        description = "Let the model look things up online. Off keeps Trace fully offline.",
+        checked = webSearchEnabled,
+        onCheckedChange = onToggleWebSearch,
+      )
     }
 
     Spacer(Modifier.weight(1f))
@@ -705,5 +718,48 @@ private fun DrawerRow(
         )
       }
     }
+  }
+}
+
+@Composable
+private fun DrawerToggleRow(
+  icon: ImageVector,
+  label: String,
+  description: String?,
+  checked: Boolean,
+  onCheckedChange: (Boolean) -> Unit,
+) {
+  Row(
+    modifier =
+      Modifier.fillMaxWidth()
+        .clip(RoundedCornerShape(16.dp))
+        .clickable { onCheckedChange(!checked) }
+        .padding(horizontal = 12.dp, vertical = 12.dp),
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Icon(
+      icon,
+      contentDescription = null,
+      tint = MaterialTheme.colorScheme.onSurfaceVariant,
+      modifier = Modifier.size(24.dp),
+    )
+    Spacer(Modifier.width(16.dp))
+    Column(modifier = Modifier.weight(1f)) {
+      Text(
+        label,
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.Medium,
+        color = MaterialTheme.colorScheme.onSurface,
+      )
+      if (description != null) {
+        Text(
+          description,
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+      }
+    }
+    Spacer(Modifier.width(8.dp))
+    androidx.compose.material3.Switch(checked = checked, onCheckedChange = onCheckedChange)
   }
 }
