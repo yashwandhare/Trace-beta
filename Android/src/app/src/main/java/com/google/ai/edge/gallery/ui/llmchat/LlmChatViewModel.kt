@@ -334,6 +334,46 @@ open class LlmChatViewModelBase(
   }
 
   /**
+   * Deterministic calendar + calculator "tools". Gemma has no wall-clock and is unreliable at
+   * arithmetic, so these never touch the model — a clear date/time or math question is answered
+   * directly from Kotlin (see `tools/DateTimeTool.kt`, `tools/CalculatorTool.kt`), guaranteeing
+   * correctness and skipping inference entirely. Mirrors [tryHandleWebSearch]/[tryHandleRagQuery]:
+   * returns true (and short-circuits the caller's normal generate call) only on an actual match.
+   * Calculator is checked first — its confidence gate is stricter, so a false DateTimeTool match
+   * on an ambiguous input is the safer default to fall through on.
+   */
+  fun tryHandleQuickTools(
+    model: Model,
+    input: String,
+    interactionOrigin: InteractionOrigin,
+    onDone: () -> Unit,
+  ): Boolean {
+    val calc = com.google.ai.edge.gallery.tools.CalculatorTool.tryHandle(input)
+    val answer: String =
+      when (calc) {
+        is com.google.ai.edge.gallery.tools.CalculatorTool.Result.Success ->
+          "${calc.expression} = ${com.google.ai.edge.gallery.tools.CalculatorTool.formatValue(calc.value)}"
+        is com.google.ai.edge.gallery.tools.CalculatorTool.Result.Error ->
+          "Can't compute \"${calc.expression}\" — ${calc.reason}."
+        null ->
+          if (com.google.ai.edge.gallery.tools.DateTimeTool.isDateTimeQuery(input)) {
+            com.google.ai.edge.gallery.tools.DateTimeTool.answer()
+          } else {
+            return false
+          }
+      }
+
+    viewModelScope.launch(Dispatchers.Default) {
+      setInProgress(true)
+      addMessage(model = model, message = ChatMessageText(content = answer, side = ChatSide.AGENT))
+      if (interactionOrigin == InteractionOrigin.VOICE) ttsManager?.speak(answer)
+      setInProgress(false)
+      onDone()
+    }
+    return true
+  }
+
+  /**
    * Opt-in web search. When [enabled] and [input] starts with the "websearch"
    * keyword, fetches DuckDuckGo results, prepends them as grounding context, and
    * runs normal generation — returning true so the caller skips its own generate

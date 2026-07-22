@@ -192,11 +192,23 @@ fun ChatViewWrapper(
         val ragOrigin =
           if (audioMessages.isNotEmpty() || chatMessageText?.data == InteractionOrigin.VOICE)
             InteractionOrigin.VOICE else InteractionOrigin.TEXT
+        // Deterministic calendar/calculator: a clear date/time or math question is answered
+        // directly from Kotlin, skipping the model entirely (see tryHandleQuickTools). Checked
+        // first — always-on and local, so it takes priority over the opt-in web search path.
+        val handledByTools =
+          text.isNotEmpty() &&
+            viewModel.tryHandleQuickTools(
+              model = model,
+              input = text,
+              interactionOrigin = ragOrigin,
+              onDone = { onGenerateResponseDone(model) },
+            )
         // Opt-in web search: a "websearch ..." message (only when the sidebar
         // toggle is on) fetches results, grounds the prompt, and generates. When
         // off or keyword-absent this returns false and normal flow continues.
         val handledByWebSearch =
-          text.isNotEmpty() &&
+          !handledByTools &&
+            text.isNotEmpty() &&
             viewModel.tryHandleWebSearch(
               model = model,
               input = text,
@@ -217,7 +229,7 @@ fun ChatViewWrapper(
         // If this is a "quiz me / summarize my notes" request, RAG handles it and
         // we skip normal generation.
         val handledByRag =
-          !handledByWebSearch &&
+          !handledByTools && !handledByWebSearch &&
             text.isNotEmpty() &&
             viewModel.tryHandleRagQuery(
               model = model,
@@ -225,7 +237,7 @@ fun ChatViewWrapper(
               interactionOrigin = ragOrigin,
               onDone = { onGenerateResponseDone(model) },
             )
-        if (!handledByWebSearch && !handledByRag) {
+        if (!handledByTools && !handledByWebSearch && !handledByRag) {
         viewModel.generateResponse(
           model = model,
           input = text,
@@ -247,7 +259,7 @@ fun ChatViewWrapper(
           // Determine origin: audio clip messages = voice, OR if the text message is marked as STT.
           interactionOrigin = if (audioMessages.isNotEmpty() || chatMessageText?.data == InteractionOrigin.VOICE) InteractionOrigin.VOICE else InteractionOrigin.TEXT,
         )
-        } // end if (!handledByWebSearch && !handledByRag)
+        } // end if (!handledByTools && !handledByWebSearch && !handledByRag)
         val activeSkills = getActiveSkills()
         Log.d(
           TAG,
@@ -345,8 +357,17 @@ fun ChatViewWrapper(
         if (files.isNotEmpty()) {
           viewModel.ingestAttachedFiles(files)
         }
-        val handledByWebSearch =
+        val handledByTools =
           text.isNotEmpty() &&
+            viewModel.tryHandleQuickTools(
+              model = model,
+              input = text,
+              interactionOrigin = InteractionOrigin.VOICE,
+              onDone = { onGenerateResponseDone(model) },
+            )
+        val handledByWebSearch =
+          !handledByTools &&
+            text.isNotEmpty() &&
             viewModel.tryHandleWebSearch(
               model = model,
               input = text,
@@ -365,7 +386,7 @@ fun ChatViewWrapper(
               interactionOrigin = InteractionOrigin.VOICE,
             )
         val handledByRag =
-          !handledByWebSearch &&
+          !handledByTools && !handledByWebSearch &&
             text.isNotEmpty() &&
             viewModel.tryHandleRagQuery(
               model = model,
@@ -373,7 +394,7 @@ fun ChatViewWrapper(
               interactionOrigin = InteractionOrigin.VOICE,
               onDone = { onGenerateResponseDone(model) },
             )
-        if (!handledByWebSearch && !handledByRag) {
+        if (!handledByTools && !handledByWebSearch && !handledByRag) {
         viewModel.generateResponse(
           model = model,
           input = text,
@@ -392,7 +413,7 @@ fun ChatViewWrapper(
           allowThinking = task.allowCapability(ModelCapability.LLM_THINKING, model),
           interactionOrigin = InteractionOrigin.VOICE,
         )
-        } // end if (!handledByWebSearch && !handledByRag)
+        } // end if (!handledByTools && !handledByWebSearch && !handledByRag)
       }
     },
   )
