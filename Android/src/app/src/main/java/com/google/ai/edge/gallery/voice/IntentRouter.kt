@@ -23,9 +23,10 @@ data class IntentResult(
  * kept to match the wiring established by origin/main).
  *
  * Classification order:
- * 1. SCREEN_EXPLAIN — most specific; any recognisable screen-describe phrase
- * 2. FILE_FETCH     — requires TWO independent signals (verb + valid target)
- * 3. LLM_CHAT       — default fallback
+ * 1. WEB_SEARCH keyword — "websearch"/"web search" always goes to LLM_CHAT
+ * 2. SCREEN_EXPLAIN — most specific; any recognisable screen-describe phrase
+ * 3. FILE_FETCH     — requires TWO independent signals (verb + valid target)
+ * 4. LLM_CHAT       — default fallback
  */
 class IntentRouter(private val context: android.content.Context) {
 
@@ -49,16 +50,19 @@ class IntentRouter(private val context: android.content.Context) {
 
         // Strong verbs: unusual in general conversation without file intent.
         // "fetch", "search", and "pull" are treated as first-class fetch verbs
-        // (bare "search test" / "pull test" work like "fetch test").
+        // (bare "search test" / "pull test" work like "fetch test"). \b anchors
+        // each verb to a real word start — without it, Regex.find matches verbs
+        // as bare substrings anywhere (e.g. "search" inside "websearch" or
+        // "research"), silently misrouting unrelated requests to FILE_FETCH.
         private val STRONG_VERB_REGEX = Regex(
-            "(?:fetch|search(?:\\s+for)?|pull(?:\\s+up)?|bring\\s+up|locate|find\\s+(?:my|the|a)|open\\s+(?:my|the))" +
+            "\\b(?:fetch|search(?:\\s+for)?|pull(?:\\s+up)?|bring\\s+up|locate|find\\s+(?:my|the|a)|open\\s+(?:my|the))" +
             "\\s+(?:(?:my|the|a|an)\\s+)?(?:file\\s+|document\\s+|photo\\s+|image\\s+|pdf\\s+|picture\\s+)?(.+)",
             RegexOption.IGNORE_CASE
         )
 
         // Weak verbs: only a file-fetch signal when combined with an explicit file-type qualifier
         private val WEAK_VERB_REGEX = Regex(
-            "(?:show|get|open|read|access|find|look\\s+for)\\s+" +
+            "\\b(?:show|get|open|read|access|find|look\\s+for)\\s+" +
             "(?:(?:my|the|a|an)\\s+)?" +
             "(?:file\\s+|document\\s+|photo\\s+|image\\s+|pdf\\s+|picture\\s+|screenshot\\s+|scan\\s+|receipt\\s+|id\\s+|card\\s+|license\\s+|certificate\\s+|form\\s+|report\\s+|resume\\s+|cv\\s+|invoice\\s+|ticket\\s+|bill\\s+|letter\\s+)" +
             "(.+)?",
@@ -75,6 +79,18 @@ class IntentRouter(private val context: android.content.Context) {
     fun routeIntent(inputText: String): IntentResult {
         val lowerText = inputText.lowercase().trim()
         Log.d(TAG, "routeIntent: input=\"$inputText\"")
+
+        // -----------------------------------------------------------------------
+        // WEB_SEARCH keyword — always LLM_CHAT, checked first. The "search" fetch
+        // verb has a real word boundary before it in "web search" (space between
+        // words), so without this explicit bypass that phrase would still be
+        // misrouted to FILE_FETCH even with \b anchoring below. The model-side
+        // web-search handler (tryHandleWebSearch) does its own prefix stripping.
+        // -----------------------------------------------------------------------
+        if (lowerText.startsWith("websearch") || lowerText.startsWith("web search")) {
+            Log.d(TAG, "routeIntent: classified=LLM_CHAT reason=websearch_keyword")
+            return IntentResult(type = IntentType.LLM_CHAT, query = inputText)
+        }
 
         // -----------------------------------------------------------------------
         // SCREEN_EXPLAIN — checked first, most specific phrases

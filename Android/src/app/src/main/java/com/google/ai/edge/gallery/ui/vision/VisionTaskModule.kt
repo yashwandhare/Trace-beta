@@ -49,7 +49,7 @@ class VisionTask @Inject constructor() : CustomTask {
       docUrl = "",
       sourceCodeUrl = "",
       textInputPlaceHolderRes = com.google.ai.edge.gallery.R.string.text_input_placeholder_llm_chat,
-      defaultSystemPrompt = "You are Trace, an advanced, highly intelligent on-device AI assistant. You are looking at an image provided by the user. Answer their questions about the image accurately and concisely."
+      defaultSystemPrompt = com.google.ai.edge.gallery.data.TracePersona.VISION_SYSTEM_PROMPT
     )
 
   override fun initializeModelFn(

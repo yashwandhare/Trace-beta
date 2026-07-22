@@ -225,7 +225,8 @@ constructor(
 
   init {
     initSearchScopeSettings()
-    _uiState.update { it.copy(webSearchEnabled = dataStoreRepository.getWebSearchEnabled()) }
+    // webSearchEnabled deliberately starts at its default (false) every launch —
+    // it's a session-only opt-in, never persisted (see /docs/CONSTRAINTS.md).
   }
 
   private fun initSearchScopeSettings() {
@@ -257,12 +258,13 @@ constructor(
     SemanticFileMatcher.config = SemanticFileMatcher.config.copy(downloadsEnabled = enabled)
   }
 
+  // Session-only opt-in — deliberately in-memory, never persisted (see
+  // /docs/CONSTRAINTS.md). Resets to off every app launch.
   fun setWebSearchEnabled(enabled: Boolean) {
-    dataStoreRepository.setWebSearchEnabled(enabled)
     _uiState.update { it.copy(webSearchEnabled = enabled) }
   }
 
-  fun getWebSearchEnabled(): Boolean = dataStoreRepository.getWebSearchEnabled()
+  fun getWebSearchEnabled(): Boolean = uiState.value.webSearchEnabled
 
   fun setSearchScopeScreenshotsEnabled(enabled: Boolean) {
     dataStoreRepository.setSearchScopeScreenshotsEnabled(enabled)
