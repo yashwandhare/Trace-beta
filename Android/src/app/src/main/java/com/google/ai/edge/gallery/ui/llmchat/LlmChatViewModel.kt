@@ -364,8 +364,15 @@ open class LlmChatViewModelBase(
 
       val augmented =
         if (results.isEmpty()) {
-          // Offline or no hits — answer from the model alone rather than stalling.
-          stripped
+          // The user explicitly asked to search but we got nothing back (offline,
+          // DDG served a challenge page, or markup changed). Tell the model this
+          // plainly so it explains the search failed — instead of letting a bare
+          // query provoke a generic "I have no internet / real-time access"
+          // disclaimer, which reads as if the tool doesn't exist.
+          "A web search for \"$stripped\" was attempted but returned no results " +
+            "(the device may be offline or the search was blocked). Tell the user " +
+            "the web search came back empty, then answer \"$stripped\" as best you " +
+            "can from what you already know, noting it may be out of date."
         } else {
           com.google.ai.edge.gallery.websearch.WebSearchClient.formatForPrompt(results) +
             "\nUsing the web results above where relevant, answer: " + stripped
@@ -384,15 +391,34 @@ open class LlmChatViewModelBase(
 
   /**
    * Returns the query with a leading "websearch" keyword removed, or null if the
-   * input doesn't start with it. Case-insensitive; tolerates an optional colon.
+   * input doesn't start with it. Case-insensitive; tolerates an optional colon
+   * and common typos ("wesearch", "web serach", "websrch") so a slip of a letter
+   * doesn't silently drop the request onto the offline path — which then reads as
+   * the model having no web access at all.
    */
   private fun stripWebSearchKeyword(input: String): String? {
     val trimmed = input.trimStart()
     val lower = trimmed.lowercase()
-    val prefix = listOf("websearch:", "websearch", "web search:", "web search").firstOrNull {
-      lower.startsWith(it)
-    } ?: return null
-    return trimmed.substring(prefix.length).trim().ifBlank { null }
+    // Explicit spellings + colon variants, longest first so "websearch:" wins
+    // over "websearch". Kept as a fast exact-prefix check for the common case.
+    val exact = listOf(
+      "websearch:", "websearch", "web search:", "web search",
+      "web-search:", "web-search",
+    )
+    exact.firstOrNull { lower.startsWith(it) }?.let {
+      return trimmed.substring(it.length).trim().ifBlank { null }
+    }
+    // Typo-tolerant fallback: the first token must look like "web(-/ )?search"
+    // with a dropped/swapped letter or two. `web?` tolerates a missing 'b'
+    // ("wesearch"); the search part tolerates transposition/drops ("serach",
+    // "seach", "srch"). Anchored to the start so it only fires on an intended
+    // leading command, never a "search" mid-sentence.
+    val fuzzy = Regex(
+      "^web?[-\\s]?s[ea]*r?[ae]*ch\\b:?\\s*",
+      RegexOption.IGNORE_CASE,
+    )
+    val m = fuzzy.find(trimmed) ?: return null
+    return trimmed.substring(m.value.length).trim().ifBlank { null }
   }
 
   /** Renders a [RagResponse] as human-readable chat text (UI panel is separate). */

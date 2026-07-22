@@ -46,14 +46,21 @@ object WebSearchClient {
   private const val ENDPOINT = "https://lite.duckduckgo.com/lite/"
   private const val TIMEOUT_MS = 8_000
 
-  /** Result-row anchors on the lite page: <a rel="nofollow" class="result-link" href="URL">TITLE</a> */
+  /**
+   * Result-row anchors on the lite page. DDG uses SINGLE quotes and puts href
+   * BEFORE class (e.g. `<a rel="nofollow" href='URL' class='result-link'>TITLE</a>`),
+   * so we match the whole opening tag by its result-link class regardless of
+   * attribute order or quote style, then pull href out of the captured attrs.
+   */
   private val RESULT_LINK = Regex(
-    "<a[^>]*class=\"result-link\"[^>]*href=\"([^\"]+)\"[^>]*>(.*?)</a>",
+    "<a\\b([^>]*\\bclass=['\"][^'\"]*result-link[^'\"]*['\"][^>]*)>(.*?)</a>",
     setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
   )
-  /** Snippet cells: <td class="result-snippet">SNIPPET</td> */
+  /** Pulls the href value out of an anchor's attribute string (either quote style). */
+  private val HREF_ATTR = Regex("\\bhref=['\"]([^'\"]+)['\"]", RegexOption.IGNORE_CASE)
+  /** Snippet cells: <td class='result-snippet'>SNIPPET</td> (single or double quotes). */
   private val RESULT_SNIPPET = Regex(
-    "<td[^>]*class=\"result-snippet\"[^>]*>(.*?)</td>",
+    "<td[^>]*\\bclass=['\"][^'\"]*result-snippet[^'\"]*['\"][^>]*>(.*?)</td>",
     setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
   )
   private val TAG_STRIP = Regex("<[^>]+>")
@@ -121,10 +128,14 @@ object WebSearchClient {
     val links = RESULT_LINK.findAll(html).toList()
     val snippets = RESULT_SNIPPET.findAll(html).map { clean(it.groupValues[1]) }.toList()
     return links.take(limit).mapIndexed { i, m ->
+      val attrs = m.groupValues[1]
+      val href = HREF_ATTR.find(attrs)?.groupValues?.get(1) ?: ""
       WebSearchResult(
         title = clean(m.groupValues[2]),
         snippet = snippets.getOrElse(i) { "" },
-        url = decodeDdgUrl(m.groupValues[1]),
+        // Modern lite results carry a direct href; decodeDdgUrl is a no-op unless
+        // a legacy uddg= redirect wrapper is present, so it's safe either way.
+        url = decodeDdgUrl(href),
       )
     }.filter { it.title.isNotBlank() }
   }
