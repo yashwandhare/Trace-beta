@@ -93,6 +93,7 @@ class RagTask @Inject constructor() : CustomTask {
       task = task,
       modelManagerViewModel = myData.modelManagerViewModel,
       onNavUp = myData.onNavUp,
+      initialQuery = myData.initialQuery,
     )
   }
 }

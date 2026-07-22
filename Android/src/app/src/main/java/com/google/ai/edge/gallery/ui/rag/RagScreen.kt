@@ -131,6 +131,9 @@ fun RagScreen(
   modelManagerViewModel: ModelManagerViewModel,
   onNavUp: () -> Unit,
   viewModel: RagViewModel = hiltViewModel(),
+  // When the screen is opened from a quiz-schedule notification deeplink, this
+  // carries the quiz request; it auto-fires once the model + notes are ready.
+  initialQuery: String? = null,
 ) {
   val context = LocalContext.current
   val uiState by viewModel.uiState.collectAsState()
@@ -148,6 +151,22 @@ fun RagScreen(
   LaunchedEffect(downloadStatus?.status, model.name) {
     if (downloadStatus?.status == ModelDownloadStatusType.SUCCEEDED) {
       modelManagerViewModel.initializeModel(context, task = task, model = model)
+    }
+  }
+
+  // Quiz-from-schedule: when a quiz reminder is tapped, the deeplink lands here
+  // with a quiz request. Fire it once the model instance is live and there are
+  // indexed notes to quiz on; guard so it runs a single time per open.
+  var autoQuizFired by remember { mutableStateOf(false) }
+  LaunchedEffect(initialQuery, model.instance, uiState.indexedSources.size) {
+    if (
+      !autoQuizFired &&
+        !initialQuery.isNullOrBlank() &&
+        model.instance != null &&
+        uiState.indexedSources.isNotEmpty()
+    ) {
+      autoQuizFired = true
+      viewModel.ask(model, initialQuery)
     }
   }
 
