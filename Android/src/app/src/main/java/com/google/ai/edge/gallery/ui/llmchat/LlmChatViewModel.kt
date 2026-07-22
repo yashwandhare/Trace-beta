@@ -374,8 +374,21 @@ open class LlmChatViewModelBase(
             "the web search came back empty, then answer \"$stripped\" as best you " +
             "can from what you already know, noting it may be out of date."
         } else {
-          com.google.ai.edge.gallery.websearch.WebSearchClient.formatForPrompt(results) +
-            "\nUsing the web results above where relevant, answer: " + stripped
+          // Force fact extraction. Without a firm instruction the model treats
+          // the results as "where to look" and deflects ("check Apple's site")
+          // instead of stating the prices/rates/dates actually present in the
+          // snippets. Make the results authoritative and demand specifics.
+          buildString {
+            append("You have live web search results below. They are current and ")
+            append("authoritative — treat them as fact and base your answer on them.\n\n")
+            append(com.google.ai.edge.gallery.websearch.WebSearchClient.formatForPrompt(results))
+            append("\nUsing ONLY the information in those results, answer: \"")
+            append(stripped)
+            append("\". State the specific figures, names, and dates found in the ")
+            append("snippets — do not tell the user to check a website or that ")
+            append("prices \"vary\". If the results genuinely don't contain the ")
+            append("answer, say which detail is missing rather than deflecting.")
+          }
         }
       generateResponse(
         model = model,
