@@ -21,16 +21,33 @@ option java_package = "com.google.ai.edge.gallery.proto";
 option java_outer_classname = "NotesIndexOuter";
 option java_multiple_files = true;
 
-// One attached note/document, persisted as its extracted text (not embeddings).
-// On launch the text is re-chunked and re-embedded into the in-memory vector
-// store, so the RAG index survives process death without persisting vectors.
+// One embedded chunk of a note, persisted with its vector so the RAG index can
+// be restored on launch WITHOUT re-running the embedder (the launch cost the
+// re-embed path used to pay). Mirrors the in-memory EmbeddedChunk/NoteChunk.
+message ChunkVectorProto {
+  // Stable chunk id ("<sourceLabel>#<ordinal>").
+  string id = 1;
+  // The chunk's passage text.
+  string text = 2;
+  // 0-based position of this chunk within its source document.
+  int32 ordinal = 3;
+  // The embedding vector (L2-normalized floats from the bundled embedder).
+  repeated float embedding = 4;
+}
+
+// One attached note/document. [extracted_text] is retained as a fallback so
+// pre-existing persisted data (and any source whose vectors failed to persist)
+// can still be re-embedded on launch. When [chunks] is present it is loaded
+// directly into the vector store, skipping the embedder entirely.
 message NoteSourceProto {
   // Human-readable origin shown in the UI (e.g. the file display name).
   string source_label = 1;
-  // The full extracted text of the document.
+  // The full extracted text of the document (re-embed fallback).
   string extracted_text = 2;
   // When it was ingested, in milliseconds since epoch.
   int64 ingested_at_ms = 3;
+  // Persisted embeddings for this source. Empty for legacy data → re-embed.
+  repeated ChunkVectorProto chunks = 4;
 }
 
 // The persisted set of attached Notes sources.

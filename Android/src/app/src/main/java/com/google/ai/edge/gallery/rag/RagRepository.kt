@@ -109,6 +109,23 @@ class RagRepository(private val appContext: Context) {
     }
 
   /**
+   * Loads pre-embedded chunks for [sourceLabel] straight into the store, with no
+   * embedder call — the launch-restore path for vectors persisted on a prior
+   * run. Replaces any existing chunks for the source. Returns the count loaded.
+   */
+  fun loadEmbedded(sourceLabel: String, embedded: List<EmbeddedChunk>): Int {
+    if (embedded.isEmpty()) return 0
+    store.removeSource(sourceLabel)
+    store.addAll(embedded)
+    Log.d(TAG, "Loaded ${embedded.size} persisted chunk(s) for '$sourceLabel' (store=${store.size})")
+    return embedded.size
+  }
+
+  /** The embedded chunks currently indexed for [sourceLabel], for persistence. */
+  fun embeddedChunksFor(sourceLabel: String): List<EmbeddedChunk> =
+    store.chunksForSource(sourceLabel)
+
+  /**
    * Retrieves the [topK] chunks most relevant to [query]. Returns an empty list
    * if nothing is indexed, the embedder is unavailable, or nothing clears
    * [minScore]. Runs off the main thread.

@@ -20,6 +20,7 @@ import android.content.Context
 import android.util.Log
 import androidx.datastore.core.DataStore
 import com.google.ai.edge.gallery.data.Model
+import com.google.ai.edge.gallery.proto.ChunkVectorProto
 import com.google.ai.edge.gallery.proto.NoteSourceProto
 import com.google.ai.edge.gallery.proto.NotesIndex
 import com.google.ai.edge.gallery.runtime.runtimeHelper
@@ -54,8 +55,9 @@ class RagEngine(appContext: Context, private val notesIndexStore: DataStore<Note
 
   /**
    * Ingests an attached document (see [RagRepository.ingest]) and persists its
-   * extracted text so it survives process death — re-embedded on next launch via
-   * [warmUp]. Persistence is best-effort; a failure here doesn't fail the ingest.
+   * extracted text AND embeddings so it survives process death — restored on
+   * next launch by [warmUp] without re-running the embedder. Persistence is
+   * best-effort; a failure here doesn't fail the ingest.
    */
   suspend fun ingest(text: String, sourceLabel: String): Int {
     val indexed = repository.ingest(text, sourceLabel)
@@ -68,11 +70,23 @@ class RagEngine(appContext: Context, private val notesIndexStore: DataStore<Note
   fun clearIndex() = repository.clearIndex()
 
   // ---------------------------------------------------------------------------
-  // Persistence (extracted text; re-embedded on launch — not raw vectors)
+  // Persistence (extracted text + embeddings; loaded directly on launch, only
+  // re-embedded if a source has no persisted vectors — e.g. legacy data)
   // ---------------------------------------------------------------------------
 
   private suspend fun persistSource(sourceLabel: String, text: String) {
     try {
+      // Snapshot the embeddings the store just produced for this source so the
+      // launch path can skip the embedder entirely.
+      val chunkProtos =
+        repository.embeddedChunksFor(sourceLabel).map { ec ->
+          ChunkVectorProto.newBuilder()
+            .setId(ec.chunk.id)
+            .setText(ec.chunk.text)
+            .setOrdinal(ec.chunk.ordinal)
+            .addAllEmbedding(ec.embedding.asList())
+            .build()
+        }
       notesIndexStore.updateData { current ->
         val kept = current.sourcesList.filter { it.sourceLabel != sourceLabel }
         NotesIndex.newBuilder()
@@ -82,6 +96,7 @@ class RagEngine(appContext: Context, private val notesIndexStore: DataStore<Note
               .setSourceLabel(sourceLabel)
               .setExtractedText(text)
               .setIngestedAtMs(System.currentTimeMillis())
+              .addAllChunks(chunkProtos)
               .build()
           )
           .build()
@@ -114,9 +129,12 @@ class RagEngine(appContext: Context, private val notesIndexStore: DataStore<Note
   }
 
   /**
-   * Re-embeds persisted note sources into the in-memory store. Idempotent: skips
-   * sources already indexed. Call once on first Notes/RAG init; runs on the
-   * caller's (background) scope. Safe if nothing is persisted.
+   * Restores persisted note sources into the in-memory store. For each source
+   * with persisted embeddings, loads the vectors directly — no embedder call,
+   * so a cold launch no longer pays the re-embed cost. Sources without vectors
+   * (legacy data, or a prior run where vector persistence failed) fall back to
+   * re-embedding from the retained text. Idempotent: skips already-indexed
+   * sources. Call once on first Notes/RAG init; safe if nothing is persisted.
    */
   suspend fun warmUp() {
     if (repository.hasIndexedContent) return
@@ -129,15 +147,40 @@ class RagEngine(appContext: Context, private val notesIndexStore: DataStore<Note
       }
     if (persisted.isEmpty()) return
     val already = repository.indexedSources.toSet()
+    var loaded = 0
+    var reEmbedded = 0
     for (source in persisted) {
       if (source.sourceLabel in already) continue
       try {
-        repository.ingest(source.extractedText, source.sourceLabel)
+        if (source.chunksList.isNotEmpty()) {
+          val embedded =
+            source.chunksList.map { c ->
+              EmbeddedChunk(
+                chunk =
+                  NoteChunk(
+                    id = c.id,
+                    text = c.text,
+                    sourceLabel = source.sourceLabel,
+                    ordinal = c.ordinal,
+                  ),
+                embedding = c.embeddingList.toFloatArray(),
+              )
+            }
+          repository.loadEmbedded(source.sourceLabel, embedded)
+          loaded++
+        } else {
+          // Legacy / vectorless source: re-embed from retained text, then
+          // persist so the next launch takes the fast path.
+          if (repository.ingest(source.extractedText, source.sourceLabel) > 0) {
+            persistSource(source.sourceLabel, source.extractedText)
+          }
+          reEmbedded++
+        }
       } catch (e: Exception) {
-        Log.w(TAG, "warmUp: failed to re-embed '${source.sourceLabel}'", e)
+        Log.w(TAG, "warmUp: failed to restore '${source.sourceLabel}'", e)
       }
     }
-    Log.d(TAG, "warmUp: re-embedded ${persisted.size} persisted source(s)")
+    Log.d(TAG, "warmUp: restored ${persisted.size} source(s) ($loaded from vectors, $reEmbedded re-embedded)")
   }
 
   /**

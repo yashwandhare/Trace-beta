@@ -91,6 +91,14 @@ class VectorStore {
   fun sources(): List<String> = entries.map { it.chunk.sourceLabel }.distinct()
 
   /**
+   * All embedded chunks originating from [sourceLabel], in insertion order —
+   * used to persist a source's vectors so it can be restored on launch without
+   * re-running the embedder.
+   */
+  fun chunksForSource(sourceLabel: String): List<EmbeddedChunk> =
+    entries.filter { it.chunk.sourceLabel == sourceLabel }
+
+  /**
    * Returns up to [topK] chunks in insertion order without similarity ranking —
    * for blank-topic requests ("quiz me" with no subject), where the grounding
    * set is simply the user's notes. Scored 0f: these were not relevance-matched,
