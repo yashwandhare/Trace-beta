@@ -1,4 +1,4 @@
-/* Copyright 2026 Google LLC
+/* Copyright 2026 The Trace Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,9 +15,9 @@
 
 syntax = "proto3";
 
-package com.google.ai.edge.gallery.proto;
+package com.trace.app.proto;
 
-option java_package = "com.google.ai.edge.gallery.proto";
+option java_package = "com.trace.app.proto";
 option java_outer_classname = "NotesIndexOuter";
 option java_multiple_files = true;
 

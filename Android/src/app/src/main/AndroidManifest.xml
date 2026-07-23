@@ -16,7 +16,7 @@
 -->
 
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.google.ai.edge.gallery"
+    package="com.trace.app"
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-sdk
@@ -74,7 +74,7 @@
           Instead, just recompose the view.
          -->
         <activity
-            android:name="com.google.ai.edge.gallery.MainActivity"
+            android:name="com.trace.app.MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
             android:theme="@style/Theme.Gallery.SplashScreen"
@@ -95,7 +95,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
-                <data android:scheme="com.google.ai.edge.gallery" />
+                <data android:scheme="com.trace.app" />
             </intent-filter>
         </activity>
 
@@ -127,11 +127,11 @@
         </service>
 
         <receiver
-            android:name="com.google.ai.edge.gallery.notifications.NotificationReceiver"
+            android:name="com.trace.app.notifications.NotificationReceiver"
             android:exported="false" />
 
         <receiver
-            android:name="com.google.ai.edge.gallery.notifications.BootReceiver"
+            android:name="com.trace.app.notifications.BootReceiver"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

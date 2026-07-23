@@ -1,0 +1,21 @@
+Trace
+Copyright 2026 The Trace Authors
+
+This product is derived from Google AI Edge Gallery
+(https://github.com/google-ai-edge/gallery), licensed under the Apache
+License, Version 2.0. Copyright notices from that original project are
+retained in the individual source files that still contain its code,
+per Section 4 of the Apache License, Version 2.0.
+
+  Portions Copyright 2025-2026 Google LLC.
+
+Substantial original work — including but not limited to the RAG /
+Notes pipeline, on-device memory and scheduling, the intent router, the
+web search integration, deterministic calendar and calculator tools,
+and the application's visual design — was authored by The Trace
+Authors and is licensed under the same Apache License, Version 2.0.
+See the LICENSE file for the full license text.
+
+This product also depends on third-party open-source libraries under
+their own respective licenses; see Settings → Open Source Licenses in
+the app for the full list.

@@ -1,0 +1,1678 @@
+/*
+ * Copyright 2025 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.trace.app.ui.modelmanager
+
+import android.content.Context
+import android.util.Log
+import androidx.activity.result.ActivityResult
+import androidx.core.net.toUri
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.trace.app.AppLifecycleProvider
+import com.trace.app.BuildConfig
+import com.trace.app.R
+import com.trace.app.common.ProjectConfig
+import com.trace.app.common.SystemPromptHelper
+import com.trace.app.common.getJsonResponse
+import com.trace.app.common.isAICoreSupported
+import com.trace.app.customtasks.common.CustomTask
+import com.trace.app.data.Accelerator
+import com.trace.app.data.BuiltInTaskId
+import com.trace.app.data.Category
+import com.trace.app.data.CategoryInfo
+import com.trace.app.data.Config
+import com.trace.app.data.ConfigKeys
+import com.trace.app.data.DataStoreRepository
+import com.trace.app.data.DownloadRepository
+import com.trace.app.data.EMPTY_MODEL
+import com.trace.app.data.IMPORTS_DIR
+import com.trace.app.data.Model
+import com.trace.app.data.ModelAllowlist
+import com.trace.app.data.ModelCapability
+import com.trace.app.data.ModelDownloadStatus
+import com.trace.app.data.ModelDownloadStatusType
+import com.trace.app.data.NumberSliderConfig
+import com.trace.app.data.RuntimeType
+import com.trace.app.data.SOC
+import com.trace.app.data.SystemPromptRepository
+import com.trace.app.data.TMP_FILE_EXT
+import com.trace.app.data.Task
+import com.trace.app.data.ValueType
+import com.trace.app.data.createLlmChatConfigs
+import com.trace.app.firebaseAnalytics
+import com.trace.app.proto.AccessTokenData
+import com.trace.app.proto.ImportedModel
+import com.trace.app.proto.Theme
+import com.trace.app.runtime.aicore.AICoreModelHelper
+import com.trace.app.filefetch.SemanticFileMatcher
+import com.google.ai.edge.litertlm.Contents
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import com.trace.app.data.convertValueToTargetType
+import java.lang.reflect.Type
+import com.google.gson.JsonSyntaxException
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
+import javax.inject.Inject
+import kotlin.collections.sortedWith
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import net.openid.appauth.AuthorizationException
+import net.openid.appauth.AuthorizationRequest
+import net.openid.appauth.AuthorizationResponse
+import net.openid.appauth.AuthorizationService
+import net.openid.appauth.ResponseTypeValues
+
+private const val TAG = "AGModelManagerViewModel"
+private const val TEXT_INPUT_HISTORY_MAX_SIZE = 50
+private const val MODEL_ALLOWLIST_FILENAME = "model_allowlist.json"
+private const val MODEL_ALLOWLIST_TEST_FILENAME = "model_allowlist_test.json"
+
+private const val TEST_MODEL_ALLOW_LIST = ""
+
+data class ModelInitializationStatus(
+  val status: ModelInitializationStatusType,
+  var error: String = "",
+  var initializedBackends: Set<String> = setOf(),
+) {
+  fun isFirstInitialization(model: Model): Boolean {
+    val backend =
+      model.getStringConfigValue(key = ConfigKeys.ACCELERATOR, defaultValue = Accelerator.GPU.label)
+    return !initializedBackends.contains(backend)
+  }
+}
+
+enum class ModelInitializationStatusType {
+  NOT_INITIALIZED,
+  INITIALIZING,
+  INITIALIZED,
+  ERROR,
+}
+
+enum class TokenStatus {
+  NOT_STORED,
+  EXPIRED,
+  NOT_EXPIRED,
+}
+
+enum class TokenRequestResultType {
+  FAILED,
+  SUCCEEDED,
+  USER_CANCELLED,
+}
+
+data class TokenStatusAndData(val status: TokenStatus, val data: AccessTokenData?)
+
+data class TokenRequestResult(val status: TokenRequestResultType, val errorMessage: String? = null)
+
+data class ModelManagerUiState(
+  /** A list of tasks available in the application. */
+  val tasks: List<Task>,
+
+  /** Tasks grouped by category. */
+  val tasksByCategory: Map<String, List<Task>>,
+
+  /** A map that tracks the download status of each model, indexed by model name. */
+  val modelDownloadStatus: Map<String, ModelDownloadStatus>,
+
+  /** A map that tracks the initialization status of each model, indexed by model name. */
+  val modelInitializationStatus: Map<String, ModelInitializationStatus>,
+
+  /** Whether the app is loading and processing the model allowlist. */
+  val loadingModelAllowlist: Boolean = true,
+
+  /** The error message when loading the model allowlist. */
+  val loadingModelAllowlistError: String = "",
+
+  /** The currently selected model. */
+  val selectedModel: Model = EMPTY_MODEL,
+
+  // Semantic search scope settings
+  val searchScopeDownloadsEnabled: Boolean = true,
+  val searchScopeScreenshotsEnabled: Boolean = false,
+  val searchScopeDocumentsEnabled: Boolean = false,
+  val searchScopeRecentImagesCount: Int = 10,
+
+  // Opt-in web search (off by default; the one online feature).
+  val webSearchEnabled: Boolean = false,
+
+  /** The history of text inputs entered by the user. */
+  val textInputHistory: List<String> = listOf(),
+  val configValuesUpdateTrigger: Long = 0L,
+  // Updated when model is imported of an imported model is deleted.
+  val modelImportingUpdateTrigger: Long = 0L,
+) {
+  fun isModelInitialized(model: Model): Boolean {
+    return modelInitializationStatus[model.name]?.status ==
+      ModelInitializationStatusType.INITIALIZED
+  }
+
+  fun isModelInitializing(model: Model): Boolean {
+    return modelInitializationStatus[model.name]?.status ==
+      ModelInitializationStatusType.INITIALIZING
+  }
+}
+
+private val RESET_CONVERSATION_TURN_COUNT_CONFIG =
+  NumberSliderConfig(
+    key = ConfigKeys.RESET_CONVERSATION_TURN_COUNT,
+    sliderMin = 1f,
+    sliderMax = 30f,
+    defaultValue = 3f,
+    valueType = ValueType.INT,
+  )
+private val PREDEFINED_LLM_TASK_ORDER =
+  listOf(
+    BuiltInTaskId.LLM_CHAT,
+    BuiltInTaskId.LLM_ASK_IMAGE,
+    BuiltInTaskId.VISION,
+    BuiltInTaskId.LLM_ASK_AUDIO,
+    BuiltInTaskId.LLM_AGENT_CHAT,
+    BuiltInTaskId.LLM_PROMPT_LAB,
+    BuiltInTaskId.LLM_TINY_GARDEN,
+    BuiltInTaskId.LLM_MOBILE_ACTIONS,
+  )
+
+/**
+ * ViewModel responsible for managing models, their download status, and initialization.
+ *
+ * This ViewModel handles model-related operations such as downloading, deleting, initializing, and
+ * cleaning up models. It also manages the UI state for model management, including the list of
+ * tasks, models, download statuses, and initialization statuses.
+ */
+@HiltViewModel
+open class ModelManagerViewModel
+@Inject
+constructor(
+  private val downloadRepository: DownloadRepository,
+  val dataStoreRepository: DataStoreRepository,
+  private val lifecycleProvider: AppLifecycleProvider,
+  private val customTasks: Set<@JvmSuppressWildcards CustomTask>,
+  private val systemPromptRepository: SystemPromptRepository,
+  @ApplicationContext private val context: Context,
+) : ViewModel() {
+  private val externalFilesDir = context.getExternalFilesDir(null)
+  protected val _uiState = MutableStateFlow(createEmptyUiState())
+  open val uiState = _uiState.asStateFlow()
+
+  private var _allowlistModels: MutableList<Model> = mutableListOf()
+  val allowlistModels: List<Model>
+    get() = _allowlistModels
+
+  val authService = AuthorizationService(context)
+  var curAccessToken: String = ""
+
+  init {
+    initSearchScopeSettings()
+    // webSearchEnabled deliberately starts at its default (false) every launch —
+    // it's a session-only opt-in, never persisted (see /docs/CONSTRAINTS.md).
+  }
+
+  private fun initSearchScopeSettings() {
+    _uiState.update { currentState ->
+      val dl = dataStoreRepository.getSearchScopeDownloadsEnabled()
+      val sc = dataStoreRepository.getSearchScopeScreenshotsEnabled()
+      val dc = dataStoreRepository.getSearchScopeDocumentsEnabled()
+      val rc = dataStoreRepository.getSearchScopeRecentImagesCount()
+
+      SemanticFileMatcher.config = SemanticFileMatcher.SearchScopeConfig(
+        downloadsEnabled = dl,
+        screenshotsEnabled = sc,
+        documentsEnabled = dc,
+        recentImagesCount = rc
+      )
+
+      currentState.copy(
+        searchScopeDownloadsEnabled = dl,
+        searchScopeScreenshotsEnabled = sc,
+        searchScopeDocumentsEnabled = dc,
+        searchScopeRecentImagesCount = rc
+      )
+    }
+  }
+
+  fun setSearchScopeDownloadsEnabled(enabled: Boolean) {
+    dataStoreRepository.setSearchScopeDownloadsEnabled(enabled)
+    _uiState.update { it.copy(searchScopeDownloadsEnabled = enabled) }
+    SemanticFileMatcher.config = SemanticFileMatcher.config.copy(downloadsEnabled = enabled)
+  }
+
+  // Session-only opt-in — deliberately in-memory, never persisted (see
+  // /docs/CONSTRAINTS.md). Resets to off every app launch.
+  fun setWebSearchEnabled(enabled: Boolean) {
+    _uiState.update { it.copy(webSearchEnabled = enabled) }
+  }
+
+  fun getWebSearchEnabled(): Boolean = uiState.value.webSearchEnabled
+
+  fun setSearchScopeScreenshotsEnabled(enabled: Boolean) {
+    dataStoreRepository.setSearchScopeScreenshotsEnabled(enabled)
+    _uiState.update { it.copy(searchScopeScreenshotsEnabled = enabled) }
+    SemanticFileMatcher.config = SemanticFileMatcher.config.copy(screenshotsEnabled = enabled)
+  }
+
+  fun setSearchScopeDocumentsEnabled(enabled: Boolean) {
+    dataStoreRepository.setSearchScopeDocumentsEnabled(enabled)
+    _uiState.update { it.copy(searchScopeDocumentsEnabled = enabled) }
+    SemanticFileMatcher.config = SemanticFileMatcher.config.copy(documentsEnabled = enabled)
+  }
+
+  fun setSearchScopeRecentImagesCount(count: Int) {
+    dataStoreRepository.setSearchScopeRecentImagesCount(count)
+    _uiState.update { it.copy(searchScopeRecentImagesCount = count) }
+    SemanticFileMatcher.config = SemanticFileMatcher.config.copy(recentImagesCount = count)
+  }
+
+  /** Persisted SAF document-tree URI for File Fetch (empty if not granted). */
+  fun getDocumentTreeUri(): String = dataStoreRepository.getDocumentTreeUri()
+
+  fun setDocumentTreeUri(uri: String) {
+    dataStoreRepository.setDocumentTreeUri(uri)
+  }
+
+  override fun onCleared() {
+    authService.dispose()
+  }
+
+  fun getTaskById(id: String): Task? {
+    return uiState.value.tasks.find { it.id == id }
+  }
+
+  fun getTasksByIds(ids: Set<String>): List<Task> {
+    return uiState.value.tasks.filter { ids.contains(it.id) }
+  }
+
+  fun getCustomTaskByTaskId(id: String): CustomTask? {
+    return getActiveCustomTasks().find { it.task.id == id }
+  }
+
+  fun getActiveCustomTasks(): List<CustomTask> {
+    return customTasks.toList()
+  }
+
+  fun getSelectedModel(): Model? {
+    return uiState.value.selectedModel
+  }
+
+  fun getModelByName(name: String): Model? {
+    for (task in uiState.value.tasks) {
+      for (model in task.models) {
+        if (model.name == name) {
+          return model
+        }
+      }
+    }
+    return null
+  }
+
+  fun getAllModels(): List<Model> {
+    val allModels = mutableSetOf<Model>()
+    for (task in uiState.value.tasks) {
+      for (model in task.models) {
+        allModels.add(model)
+      }
+    }
+    return allModels.toList().sortedBy { it.displayName.ifEmpty { it.name } }
+  }
+
+  fun getAllDownloadedModels(): List<Model> {
+    return getAllModels().filter {
+      uiState.value.modelDownloadStatus[it.name]?.status == ModelDownloadStatusType.SUCCEEDED &&
+        it.isLlm
+    }
+  }
+
+  fun processTasks() {
+    val curTasks = getActiveCustomTasks().map { it.task }
+    for (task in curTasks) {
+      for (model in task.models) {
+        model.preProcess()
+        loadModelConfig(model)
+      }
+      // Move the model that is best for this task to the front.
+      val bestModel = task.models.find { it.bestForTaskIds.contains(task.id) }
+      if (bestModel != null) {
+        task.models.remove(bestModel)
+        task.models.add(0, bestModel)
+      }
+    }
+  }
+
+  fun updateConfigValuesUpdateTrigger() {
+    _uiState.update { it.copy(configValuesUpdateTrigger = System.currentTimeMillis()) }
+  }
+
+  fun selectModel(model: Model) {
+    if (_uiState.value.selectedModel.name != model.name) {
+      _uiState.update { it.copy(selectedModel = model) }
+    }
+  }
+
+  open fun downloadModel(task: Task?, model: Model) {
+    // Update status.
+    setDownloadStatus(
+      curModel = model,
+      status = ModelDownloadStatus(status = ModelDownloadStatusType.IN_PROGRESS),
+    )
+
+    // TODO: b/494029782 - Both litertlm and aicore download and storage should be unified into a
+    // model repository.
+    if (model.runtimeType == RuntimeType.AICORE) {
+      AICoreModelHelper.downloadModel(
+        context = context,
+        coroutineScope = viewModelScope,
+        model = model,
+        onProgress = { downloaded: Long, total: Long ->
+          setDownloadStatus(
+            curModel = model,
+            status =
+              ModelDownloadStatus(
+                status = ModelDownloadStatusType.IN_PROGRESS,
+                receivedBytes = downloaded,
+                totalBytes = total,
+              ),
+          )
+        },
+        onDone = {
+          setDownloadStatus(
+            curModel = model,
+            status =
+              ModelDownloadStatus(
+                status = ModelDownloadStatusType.SUCCEEDED,
+                receivedBytes = model.sizeInBytes,
+                totalBytes = model.sizeInBytes,
+              ),
+          )
+        },
+        onError = { error: String ->
+          setDownloadStatus(
+            curModel = model,
+            status =
+              ModelDownloadStatus(status = ModelDownloadStatusType.FAILED, errorMessage = error),
+          )
+        },
+      )
+      return
+    }
+
+    // Delete the model files first.
+    deleteModel(model = model, removeImportedFromModelList = false)
+
+    // Start to send download request.
+    downloadRepository.downloadModel(
+      task = task,
+      model = model,
+      onStatusUpdated = this::setDownloadStatus,
+    )
+  }
+
+  fun cancelDownloadModel(model: Model) {
+    // TODO: b/494029782 - Both litertlm and aicore download and storage should be unified into a
+    // model repository.
+    // AICore models cannot be deleted from the download repository within the app.
+    if (model.runtimeType == RuntimeType.AICORE) {
+      return
+    }
+    downloadRepository.cancelDownloadModel(model)
+    deleteModel(model = model, removeImportedFromModelList = false)
+  }
+
+  fun deleteModel(model: Model, removeImportedFromModelList: Boolean = true) {
+    // If the currently downloaded model is an updatable version, reset the model to its latest
+    // version and mark it as not updatable upon deletion.
+    if (model.updatable) {
+      model.updatable = false
+      model.latestModelFile?.let {
+        model.version = it.commitHash
+        model.downloadFileName = it.fileName
+      }
+    }
+
+    if (model.imported) {
+      deleteFilesFromImportDir(model.downloadFileName)
+    } else {
+      deleteDirFromExternalFilesDir(model.normalizedName)
+    }
+
+    // Update model download status to NotDownloaded.
+    val curModelDownloadStatus = uiState.value.modelDownloadStatus.toMutableMap()
+    curModelDownloadStatus[model.name] =
+      ModelDownloadStatus(status = ModelDownloadStatusType.NOT_DOWNLOADED)
+
+    // Delete model from the list if model is imported as a local model and
+    // removeImportedFromModelList is
+    // true.
+    if (model.imported && removeImportedFromModelList) {
+      for (curTask in uiState.value.tasks) {
+        val index = curTask.models.indexOf(model)
+        if (index >= 0) {
+          curTask.models.removeAt(index)
+        }
+        curTask.updateTrigger.value = System.currentTimeMillis()
+      }
+      curModelDownloadStatus.remove(model.name)
+
+      // Update data store.
+      val importedModels = dataStoreRepository.readImportedModels().toMutableList()
+      val importedModelIndex = importedModels.indexOfFirst { it.fileName == model.name }
+      if (importedModelIndex >= 0) {
+        importedModels.removeAt(importedModelIndex)
+      }
+      dataStoreRepository.saveImportedModels(importedModels = importedModels)
+    }
+    _uiState.update {
+      it.copy(
+        modelDownloadStatus = curModelDownloadStatus,
+        tasks = it.tasks.toList(),
+        modelImportingUpdateTrigger = System.currentTimeMillis(),
+      )
+    }
+  }
+
+  fun initializeModel(
+    context: Context,
+    task: Task,
+    model: Model,
+    force: Boolean = false,
+    onDone: () -> Unit = {},
+    onError: (String) -> Unit = {},
+  ) {
+    viewModelScope.launch {
+      // Skip if initialized already.
+      if (
+        !force &&
+          uiState.value.modelInitializationStatus[model.name]?.status ==
+            ModelInitializationStatusType.INITIALIZED
+      ) {
+        Log.d(TAG, "Model '${model.name}' has been initialized. Skipping.")
+        return@launch
+      }
+
+      // Skip if initialization is in progress.
+      if (model.initializing) {
+        model.cleanUpAfterInit = false
+        Log.d(TAG, "Model '${model.name}' is being initialized. Skipping.")
+        return@launch
+      }
+
+      // Clean up.
+      cleanupModel(context = context, task = task, model = model)
+
+      // Start initialization.
+      Log.d(TAG, "Initializing model '${model.name}'...")
+      model.initializing = true
+      updateModelInitializationStatus(
+        model = model,
+        status = ModelInitializationStatusType.INITIALIZING,
+      )
+
+      val onDoneFn: (error: String) -> Unit = { error ->
+        model.initializing = false
+        if (model.instance != null) {
+          Log.d(TAG, "Model '${model.name}' initialized successfully")
+          updateModelInitializationStatus(
+            model = model,
+            status = ModelInitializationStatusType.INITIALIZED,
+          )
+          if (model.cleanUpAfterInit) {
+            Log.d(TAG, "Model '${model.name}' needs cleaning up after init.")
+            cleanupModel(context = context, task = task, model = model)
+          }
+          onDone()
+        } else if (error.isNotEmpty()) {
+          Log.d(TAG, "Model '${model.name}' failed to initialize")
+          updateModelInitializationStatus(
+            model = model,
+            status = ModelInitializationStatusType.ERROR,
+            error = error,
+          )
+          onError(error)
+        }
+      }
+
+      // Call the model initialization function.
+      val systemPrompt = SystemPromptHelper.getEffectiveSystemPrompt(systemPromptRepository, task)
+      withContext(Dispatchers.IO) {
+        getCustomTaskByTaskId(id = task.id)
+          ?.initializeModelFn(
+            context = context,
+            coroutineScope = viewModelScope,
+            model = model,
+            systemInstruction = Contents.of(systemPrompt),
+            onDone = onDoneFn,
+          )
+      }
+    }
+  }
+
+  fun cleanupModel(
+    context: Context,
+    task: Task,
+    model: Model,
+    instanceToCleanUp: Any? = model.instance,
+    onDone: () -> Unit = {},
+  ) {
+    if (instanceToCleanUp != null && instanceToCleanUp !== model.instance) {
+      Log.d(TAG, "Stale cleanup request for ${model.name}. Aborting.")
+      onDone()
+      return
+    }
+
+    if (model.instance != null) {
+      model.cleanUpAfterInit = false
+      Log.d(TAG, "Cleaning up model '${model.name}'...")
+      val onDoneFn: () -> Unit = {
+        model.instance = null
+        model.initializing = false
+        updateModelInitializationStatus(
+          model = model,
+          status = ModelInitializationStatusType.NOT_INITIALIZED,
+        )
+        Log.d(TAG, "Clean up model '${model.name}' done")
+        onDone()
+      }
+      getCustomTaskByTaskId(id = task.id)
+        ?.cleanUpModelFn(
+          context = context,
+          coroutineScope = viewModelScope,
+          model = model,
+          onDone = onDoneFn,
+        )
+    } else {
+      // When model is being initialized and we are trying to clean it up at same time, we mark it
+      // to clean up and it will be cleaned up after initialization is done.
+      if (model.initializing) {
+        Log.d(
+          TAG,
+          "Model '${model.name}' is still initializing.. Will clean up after it is done initializing",
+        )
+        model.cleanUpAfterInit = true
+      }
+    }
+  }
+
+  fun setDownloadStatus(curModel: Model, status: ModelDownloadStatus) {
+    // Update model download progress.
+    val curModelDownloadStatus = uiState.value.modelDownloadStatus.toMutableMap()
+    curModelDownloadStatus[curModel.name] = status
+    // Delete downloaded file if status is failed or not_downloaded.
+    if (
+      status.status == ModelDownloadStatusType.FAILED ||
+        status.status == ModelDownloadStatusType.NOT_DOWNLOADED
+    ) {
+      deleteFileFromExternalFilesDir(curModel.downloadFileName)
+    }
+
+    _uiState.update { it.copy(modelDownloadStatus = curModelDownloadStatus) }
+  }
+
+  fun setInitializationStatus(model: Model, status: ModelInitializationStatus) {
+    val curStatus = uiState.value.modelInitializationStatus.toMutableMap()
+    if (curStatus.containsKey(model.name)) {
+      val initializedBackends = curStatus[model.name]?.initializedBackends ?: setOf()
+      val backend =
+        model.getStringConfigValue(
+          key = ConfigKeys.ACCELERATOR,
+          defaultValue = Accelerator.GPU.label,
+        )
+      val newInitializedBackends =
+        if (status.status == ModelInitializationStatusType.INITIALIZED) {
+          initializedBackends + backend
+        } else {
+          initializedBackends
+        }
+      curStatus[model.name] = status.copy(initializedBackends = newInitializedBackends)
+      _uiState.update { it.copy(modelInitializationStatus = curStatus) }
+    }
+  }
+
+  fun addTextInputHistory(text: String) {
+    if (uiState.value.textInputHistory.indexOf(text) < 0) {
+      val newHistory = uiState.value.textInputHistory.toMutableList()
+      newHistory.add(0, text)
+      if (newHistory.size > TEXT_INPUT_HISTORY_MAX_SIZE) {
+        newHistory.removeAt(newHistory.size - 1)
+      }
+      _uiState.update { it.copy(textInputHistory = newHistory) }
+      dataStoreRepository.saveTextInputHistory(_uiState.value.textInputHistory)
+    } else {
+      promoteTextInputHistoryItem(text)
+    }
+  }
+
+  fun promoteTextInputHistoryItem(text: String) {
+    val index = uiState.value.textInputHistory.indexOf(text)
+    if (index >= 0) {
+      val newHistory = uiState.value.textInputHistory.toMutableList()
+      newHistory.removeAt(index)
+      newHistory.add(0, text)
+      _uiState.update { it.copy(textInputHistory = newHistory) }
+      dataStoreRepository.saveTextInputHistory(_uiState.value.textInputHistory)
+    }
+  }
+
+  fun deleteTextInputHistory(text: String) {
+    val index = uiState.value.textInputHistory.indexOf(text)
+    if (index >= 0) {
+      val newHistory = uiState.value.textInputHistory.toMutableList()
+      newHistory.removeAt(index)
+      _uiState.update { it.copy(textInputHistory = newHistory) }
+      dataStoreRepository.saveTextInputHistory(_uiState.value.textInputHistory)
+    }
+  }
+
+  fun clearTextInputHistory() {
+    _uiState.update { it.copy(textInputHistory = mutableListOf()) }
+    dataStoreRepository.saveTextInputHistory(_uiState.value.textInputHistory)
+  }
+
+  fun readThemeOverride(): Theme {
+    return dataStoreRepository.readTheme()
+  }
+
+  fun saveThemeOverride(theme: Theme) {
+    dataStoreRepository.saveTheme(theme = theme)
+  }
+
+  fun hasCompletedOnboarding(): Boolean {
+    return dataStoreRepository.getHasCompletedOnboarding()
+  }
+
+  /** Effective system prompt for [task] (custom override or the task default). */
+  fun readSystemPrompt(task: com.trace.app.data.Task): String {
+    return kotlinx.coroutines.runBlocking {
+      SystemPromptHelper.getEffectiveSystemPrompt(systemPromptRepository, task)
+    }
+  }
+
+  /** Persists a custom system prompt for [taskId] (blank clears the override). */
+  fun saveSystemPrompt(taskId: String, prompt: String) {
+    viewModelScope.launch {
+      if (prompt.isBlank()) systemPromptRepository.clearCustomSystemPrompt(taskId)
+      else systemPromptRepository.updateSystemPrompt(taskId, prompt)
+    }
+  }
+
+  fun setOnboardingCompleted() {
+    dataStoreRepository.setHasCompletedOnboarding(true)
+  }
+
+  /**
+   * Retrieves whether Firebase Analytics collection is currently enabled.
+   *
+   * @return `true` if enabled or not explicitly disabled in settings; `false` if disabled.
+   */
+  fun readFirebaseAnalytics(): Boolean {
+    return dataStoreRepository.readFirebaseAnalytics()
+  }
+
+  /**
+   * Updates the user preference for Firebase Analytics data collection right away.
+   *
+   * Persists the setting to on-disk DataStore
+   * (`dataStoreRepository.saveFirebaseAnalytics(enabled)`) and dynamically updates the live
+   * Firebase SDK state via `firebaseAnalytics?.setAnalyticsCollectionEnabled(enabled)`.
+   *
+   * @param enabled `true` to enable diagnostic/analytics gathering; `false` to disable.
+   */
+  fun saveFirebaseAnalytics(enabled: Boolean) {
+    dataStoreRepository.saveFirebaseAnalytics(enabled = enabled)
+    firebaseAnalytics?.setAnalyticsCollectionEnabled(enabled)
+  }
+
+  fun getModelUrlResponse(model: Model, accessToken: String? = null): Int {
+    try {
+      val url = URL(model.url)
+      val connection = url.openConnection() as HttpURLConnection
+      if (accessToken != null) {
+        connection.setRequestProperty("Authorization", "Bearer $accessToken")
+      }
+      connection.connect()
+
+      // Report the result.
+      return connection.responseCode
+    } catch (e: Exception) {
+      Log.e(TAG, "$e")
+      return -1
+    }
+  }
+
+  fun addImportedLlmModel(info: ImportedModel) {
+    Log.d(TAG, "adding imported llm model: $info")
+
+    val importsDir = File(context.getExternalFilesDir(null), IMPORTS_DIR)
+    if (!importsDir.exists()) {
+      importsDir.mkdirs()
+    }
+
+    // Create model.
+    val model = createModelFromImportedModelInfo(info = info)
+
+    val setOfTasks =
+      mutableSetOf(
+        BuiltInTaskId.LLM_CHAT,
+        BuiltInTaskId.LLM_ASK_IMAGE,
+        BuiltInTaskId.VISION,
+        BuiltInTaskId.LLM_ASK_AUDIO,
+        BuiltInTaskId.LLM_PROMPT_LAB,
+        BuiltInTaskId.LLM_TINY_GARDEN,
+        BuiltInTaskId.LLM_MOBILE_ACTIONS,
+        BuiltInTaskId.LLM_AGENT_CHAT,
+      )
+    for (task in getTasksByIds(ids = setOfTasks)) {
+      // Remove duplicated imported model if existed.
+      val modelIndex = task.models.indexOfFirst { info.fileName == it.name && it.imported }
+      if (modelIndex >= 0) {
+        Log.d(TAG, "duplicated imported model found in task. Removing it first")
+        task.models.removeAt(modelIndex)
+      }
+      if (
+        (task.id == BuiltInTaskId.LLM_ASK_IMAGE && model.llmSupportImage) ||
+          (task.id == BuiltInTaskId.VISION && model.llmSupportImage) ||
+          (task.id == BuiltInTaskId.LLM_ASK_AUDIO && model.llmSupportAudio) ||
+          (task.id == BuiltInTaskId.LLM_TINY_GARDEN && model.llmSupportTinyGarden) ||
+          (task.id == BuiltInTaskId.LLM_MOBILE_ACTIONS && model.llmSupportMobileActions) ||
+          (task.id != BuiltInTaskId.LLM_ASK_IMAGE &&
+            task.id != BuiltInTaskId.VISION &&
+            task.id != BuiltInTaskId.LLM_ASK_AUDIO &&
+            task.id != BuiltInTaskId.LLM_TINY_GARDEN &&
+            task.id != BuiltInTaskId.LLM_MOBILE_ACTIONS)
+      ) {
+        task.models.add(model)
+        if (task.id == BuiltInTaskId.LLM_TINY_GARDEN) {
+          val newConfigs = model.configs.toMutableList()
+          newConfigs.add(RESET_CONVERSATION_TURN_COUNT_CONFIG)
+          model.configs = newConfigs
+          model.preProcess()
+          loadModelConfig(model)
+        }
+      }
+      task.updateTrigger.value = System.currentTimeMillis()
+    }
+
+    // Add initial status and states.
+    val modelDownloadStatus = uiState.value.modelDownloadStatus.toMutableMap()
+    val modelInstances = uiState.value.modelInitializationStatus.toMutableMap()
+    if (model.url.isNotEmpty()) {
+      modelDownloadStatus[model.name] = getModelDownloadStatus(model = model)
+    } else {
+      modelDownloadStatus[model.name] =
+        ModelDownloadStatus(
+          status = ModelDownloadStatusType.SUCCEEDED,
+          receivedBytes = info.fileSize,
+          totalBytes = info.fileSize,
+        )
+    }
+    modelInstances[model.name] =
+      ModelInitializationStatus(status = ModelInitializationStatusType.NOT_INITIALIZED)
+
+    // Update ui state.
+    _uiState.update {
+      it.copy(
+        tasks = it.tasks.toList(),
+        modelDownloadStatus = modelDownloadStatus,
+        modelInitializationStatus = modelInstances,
+        modelImportingUpdateTrigger = System.currentTimeMillis(),
+      )
+    }
+
+    // Add to data store.
+    val importedModels = dataStoreRepository.readImportedModels().toMutableList()
+    val importedModelIndex = importedModels.indexOfFirst { info.fileName == it.fileName }
+    if (importedModelIndex >= 0) {
+      Log.d(TAG, "duplicated imported model found in data store. Removing it first")
+      importedModels.removeAt(importedModelIndex)
+    }
+    importedModels.add(info)
+    dataStoreRepository.saveImportedModels(importedModels = importedModels)
+  }
+
+  fun getTokenStatusAndData(): TokenStatusAndData {
+    // Try to load token data from DataStore.
+    var tokenStatus = TokenStatus.NOT_STORED
+    Log.d(TAG, "Reading token data from data store...")
+    val tokenData = dataStoreRepository.readAccessTokenData()
+
+    // Token exists.
+    if (tokenData != null && tokenData.accessToken.isNotEmpty()) {
+      Log.d(TAG, "Token exists and loaded.")
+
+      // Check expiration (with 5-minute buffer).
+      val curTs = System.currentTimeMillis()
+      val expirationTs = tokenData.expiresAtMs - 5 * 60
+      Log.d(
+        TAG,
+        "Checking whether token has expired or not. Current ts: $curTs, expires at: $expirationTs",
+      )
+      if (curTs >= expirationTs) {
+        Log.d(TAG, "Token expired!")
+        tokenStatus = TokenStatus.EXPIRED
+      } else {
+        Log.d(TAG, "Token not expired.")
+        tokenStatus = TokenStatus.NOT_EXPIRED
+        curAccessToken = tokenData.accessToken
+      }
+    } else {
+      Log.d(TAG, "Token doesn't exists.")
+    }
+
+    return TokenStatusAndData(status = tokenStatus, data = tokenData)
+  }
+
+  fun getAuthorizationRequest(): AuthorizationRequest {
+    return AuthorizationRequest.Builder(
+        ProjectConfig.authServiceConfig,
+        ProjectConfig.clientId,
+        ResponseTypeValues.CODE,
+        ProjectConfig.redirectUri.toUri(),
+      )
+      .setScope("read-repos")
+      .build()
+  }
+
+  fun handleAuthResult(result: ActivityResult, onTokenRequested: (TokenRequestResult) -> Unit) {
+    val dataIntent = result.data
+    if (dataIntent == null) {
+      onTokenRequested(
+        TokenRequestResult(
+          status = TokenRequestResultType.FAILED,
+          errorMessage = "Empty auth result",
+        )
+      )
+      return
+    }
+
+    val response = AuthorizationResponse.fromIntent(dataIntent)
+    val exception = AuthorizationException.fromIntent(dataIntent)
+
+    when {
+      response?.authorizationCode != null -> {
+        // Authorization successful, exchange the code for tokens
+        var errorMessage: String? = null
+        authService.performTokenRequest(response.createTokenExchangeRequest()) {
+          tokenResponse,
+          tokenEx ->
+          if (tokenResponse != null) {
+            if (tokenResponse.accessToken == null) {
+              errorMessage = "Empty access token"
+            } else if (tokenResponse.refreshToken == null) {
+              errorMessage = "Empty refresh token"
+            } else if (tokenResponse.accessTokenExpirationTime == null) {
+              errorMessage = "Empty expiration time"
+            } else {
+              // Token exchange successful. Store the tokens securely
+              Log.d(TAG, "Token exchange successful. Storing tokens...")
+              saveAccessToken(
+                accessToken = tokenResponse.accessToken!!,
+                refreshToken = tokenResponse.refreshToken!!,
+                expiresAt = tokenResponse.accessTokenExpirationTime!!,
+              )
+              curAccessToken = tokenResponse.accessToken!!
+              Log.d(TAG, "Token successfully saved.")
+            }
+          } else if (tokenEx != null) {
+            errorMessage = "Token exchange failed: ${tokenEx.message}"
+          } else {
+            errorMessage = "Token exchange failed"
+          }
+          if (errorMessage == null) {
+            onTokenRequested(TokenRequestResult(status = TokenRequestResultType.SUCCEEDED))
+          } else {
+            onTokenRequested(
+              TokenRequestResult(
+                status = TokenRequestResultType.FAILED,
+                errorMessage = errorMessage,
+              )
+            )
+          }
+        }
+      }
+
+      exception != null -> {
+        onTokenRequested(
+          TokenRequestResult(
+            status =
+              if (exception.message == "User cancelled flow") TokenRequestResultType.USER_CANCELLED
+              else TokenRequestResultType.FAILED,
+            errorMessage = exception.message,
+          )
+        )
+      }
+
+      else -> {
+        onTokenRequested(TokenRequestResult(status = TokenRequestResultType.USER_CANCELLED))
+      }
+    }
+  }
+
+  fun saveAccessToken(accessToken: String, refreshToken: String, expiresAt: Long) {
+    dataStoreRepository.saveAccessTokenData(
+      accessToken = accessToken,
+      refreshToken = refreshToken,
+      expiresAt = expiresAt,
+    )
+  }
+
+  fun clearAccessToken() {
+    dataStoreRepository.clearAccessTokenData()
+  }
+
+  // TODO: b/494029782 - Both litertlm and aicore download and storage should be unified into a
+  // model repository.
+  private fun checkAICoreModelStatuses() {
+    viewModelScope.launch(Dispatchers.Main) {
+      val aicoreModels =
+        uiState.value.tasks
+          .flatMap { it.models }
+          .filter { it.runtimeType == RuntimeType.AICORE }
+          .distinctBy { it.name }
+
+      // Proactively attempt AICore model download upon app startup.
+      for (model in aicoreModels) {
+        downloadModel(task = null, model = model)
+      }
+    }
+  }
+
+  private fun processPendingDownloads() {
+    // Cancel all pending downloads for the retrieved models.
+    downloadRepository.cancelAll {
+      Log.d(TAG, "All workers are cancelled.")
+
+      viewModelScope.launch(Dispatchers.Main) {
+        val checkedModelNames = mutableSetOf<String>()
+        val tokenStatusAndData = getTokenStatusAndData()
+        for (task in uiState.value.tasks) {
+          for (model in task.models) {
+            if (checkedModelNames.contains(model.name)) {
+              continue
+            }
+
+            // Start download for partially downloaded models.
+            val downloadStatus = uiState.value.modelDownloadStatus[model.name]?.status
+            if (downloadStatus == ModelDownloadStatusType.PARTIALLY_DOWNLOADED) {
+              if (
+                tokenStatusAndData.status == TokenStatus.NOT_EXPIRED &&
+                  tokenStatusAndData.data != null
+              ) {
+                model.accessToken = tokenStatusAndData.data.accessToken
+              }
+              Log.d(TAG, "Sending a new download request for '${model.name}'")
+              downloadRepository.downloadModel(
+                task = task,
+                model = model,
+                onStatusUpdated = this@ModelManagerViewModel::setDownloadStatus,
+              )
+            }
+
+            checkedModelNames.add(model.name)
+          }
+        }
+      }
+    }
+  }
+
+  fun loadModelAllowlist() {
+    _uiState.update { it.copy(loadingModelAllowlist = true, loadingModelAllowlistError = "") }
+
+    viewModelScope.launch(Dispatchers.IO) {
+      try {
+        // Clear existing allowlist models.
+        _allowlistModels.clear()
+
+        // Load model allowlist json.
+        // Try to read the test allowlist first.
+        Log.d(TAG, "Loading test model allowlist.")
+        var modelAllowlist = readModelAllowlistFromDisk(fileName = MODEL_ALLOWLIST_TEST_FILENAME)
+
+        // Local test only.
+        if (TEST_MODEL_ALLOW_LIST.isNotEmpty()) {
+          Log.d(TAG, "Loading local model allowlist for testing.")
+          val gson = Gson()
+          try {
+            modelAllowlist = gson.fromJson(TEST_MODEL_ALLOW_LIST, ModelAllowlist::class.java)
+          } catch (e: JsonSyntaxException) {
+            Log.e(TAG, "Failed to parse local test json", e)
+          }
+        }
+
+        if (modelAllowlist == null) {
+          // Load from bundled assets (Trace: skip network, use our curated allowlist).
+          Log.d(TAG, "Loading model allowlist from bundled assets.")
+          modelAllowlist = readModelAllowlistFromAssets()
+          if (modelAllowlist != null) {
+            Log.d(TAG, "Loaded model allowlist from assets.")
+          }
+        }
+
+        if (modelAllowlist == null) {
+          // Fallback: try cached disk copy.
+          Log.w(TAG, "Assets allowlist not found. Trying cached disk copy.")
+          modelAllowlist = readModelAllowlistFromDisk()
+        }
+
+        if (modelAllowlist == null) {
+          _uiState.update { it.copy(loadingModelAllowlistError = "Failed to load model list") }
+          return@launch
+        }
+
+        Log.d(TAG, "Allowlist: $modelAllowlist")
+
+        val isAICoreAvailable by lazy {
+          // Build a fast-lookup set of all supported device models.
+          // This extracts the models from all allowed groups, flattens them into a single stream,
+          // lowercases them for case-insensitive matching, and stores them in a Set.
+          val allowedDeviceModelsSet =
+            modelAllowlist.aicoreRequirements
+              ?.allowedDeviceGroups
+              ?.asSequence()
+              ?.flatMap { it.deviceModels }
+              ?.map { it.lowercase() }
+              ?.toSet()
+          isAICoreSupported(allowedDeviceModelsSet)
+        }
+
+        // Convert models in the allowlist.
+        val curTasks = getActiveCustomTasks().map { it.task }
+        val nameToModel = mutableMapOf<String, Model>()
+        for (allowedModel in modelAllowlist.models) {
+          if (allowedModel.disabled == true) {
+            continue
+          }
+
+          if (allowedModel.runtimeType == RuntimeType.AICORE && !isAICoreAvailable) {
+            continue
+          }
+
+          // Ignore the allowedModel if its accelerator is only npu and this device's soc is not in
+          // its socToModelFiles.
+          val accelerators = allowedModel.defaultConfig.accelerators ?: ""
+          val acceleratorList = accelerators.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+          if (acceleratorList.size == 1 && acceleratorList[0] == "npu") {
+            val socToModelFiles = allowedModel.socToModelFiles
+            if (socToModelFiles != null && !socToModelFiles.containsKey(SOC)) {
+              Log.d(
+                TAG,
+                "Ignoring model '${allowedModel.name}' because it's NPU-only and not supported on SOC: $SOC",
+              )
+              continue
+            }
+          }
+
+          val model = allowedModel.toModel()
+          _allowlistModels.add(model)
+          nameToModel.put(model.name, model)
+          for (taskType in allowedModel.taskTypes) {
+            val task = curTasks.find { it.id == taskType }
+            task?.models?.add(model)
+
+            if (task?.id == BuiltInTaskId.LLM_TINY_GARDEN) {
+              val newConfigs = model.configs.toMutableList()
+              newConfigs.add(RESET_CONVERSATION_TURN_COUNT_CONFIG)
+              model.configs = newConfigs
+            }
+          }
+        }
+
+        // Find models from allowlist if a task's `modelNames` field is not empty.
+        for (task in curTasks) {
+          if (task.modelNames.isNotEmpty()) {
+            for (modelName in task.modelNames) {
+              val model = nameToModel[modelName]
+              if (model == null) {
+                Log.w(TAG, "Model '$modelName' in task '${task.label}' not found in allowlist.")
+                continue
+              }
+              Log.d(TAG, "Adding model '$modelName' to task '${task.label}' from modelNames.")
+              task.models.add(model)
+            }
+          }
+        }
+
+        // Process all tasks.
+        processTasks()
+
+        // Update UI state.
+        _uiState.update {
+          createUiState()
+            .copy(
+              loadingModelAllowlist = false,
+              tasks = curTasks,
+              tasksByCategory = groupTasksByCategory(),
+            )
+        }
+
+        // Process pending downloads.
+        processPendingDownloads()
+
+        // Wait for AICore models statuses and update download indicators
+        checkAICoreModelStatuses()
+      } catch (e: Exception) {
+        e.printStackTrace()
+      }
+    }
+  }
+
+  fun clearLoadModelAllowlistError() {
+    val curTasks = getActiveCustomTasks().map { it.task }
+    processTasks()
+    _uiState.update {
+      createUiState()
+        .copy(
+          loadingModelAllowlist = false,
+          tasks = curTasks,
+          loadingModelAllowlistError = "",
+          tasksByCategory = groupTasksByCategory(),
+        )
+    }
+  }
+
+  fun setAppInForeground(foreground: Boolean) {
+    lifecycleProvider.isAppInForeground = foreground
+  }
+
+  private fun saveModelAllowlistToDisk(modelAllowlistContent: String) {
+    try {
+      Log.d(TAG, "Saving model allowlist to disk...")
+      val file = File(externalFilesDir, MODEL_ALLOWLIST_FILENAME)
+      file.writeText(modelAllowlistContent)
+      Log.d(TAG, "Done: saving model allowlist to disk.")
+    } catch (e: Exception) {
+      Log.e(TAG, "failed to write model allowlist to disk", e)
+    }
+  }
+
+  private fun readModelAllowlistFromAssets(): ModelAllowlist? {
+    try {
+      val fileName = MODEL_ALLOWLIST_FILENAME
+      Log.d(TAG, "Reading model allowlist from assets: $fileName")
+      val inputStream = context.assets.open(fileName)
+      val content = inputStream.bufferedReader().use { it.readText() }
+      val gson = Gson()
+      return gson.fromJson(content, ModelAllowlist::class.java)
+    } catch (e: Exception) {
+      Log.e(TAG, "failed to read model allowlist from assets", e)
+      return null
+    }
+  }
+
+  private fun readModelAllowlistFromDisk(
+    fileName: String = MODEL_ALLOWLIST_FILENAME
+  ): ModelAllowlist? {
+    try {
+      Log.d(TAG, "Reading model allowlist from disk: $fileName")
+      val baseDir =
+        if (fileName == MODEL_ALLOWLIST_TEST_FILENAME) File("/data/local/tmp") else externalFilesDir
+      val file = File(baseDir, fileName)
+      if (file.exists()) {
+        val content = file.readText()
+        Log.d(TAG, "Model allowlist content from local file: $content")
+
+        val gson = Gson()
+        return gson.fromJson(content, ModelAllowlist::class.java)
+      }
+    } catch (e: Exception) {
+      Log.e(TAG, "failed to read model allowlist from disk", e)
+      return null
+    }
+
+    return null
+  }
+
+  private fun isModelPartiallyDownloaded(model: Model): Boolean {
+    if (model.localModelFilePathOverride.isNotEmpty()) {
+      return false
+    }
+
+    // A model is partially downloaded when the tmp file exists.
+    val tmpFilePath =
+      model.getPath(context = context, fileName = "${model.downloadFileName}.$TMP_FILE_EXT")
+    return File(tmpFilePath).exists()
+  }
+
+  private fun createEmptyUiState(): ModelManagerUiState {
+    return ModelManagerUiState(
+      tasks = listOf(),
+      tasksByCategory = mapOf(),
+      modelDownloadStatus = mapOf(),
+      modelInitializationStatus = mapOf(),
+    )
+  }
+
+  private fun createUiState(): ModelManagerUiState {
+    val modelDownloadStatus: MutableMap<String, ModelDownloadStatus> = mutableMapOf()
+    val modelInstances: MutableMap<String, ModelInitializationStatus> = mutableMapOf()
+    val tasks: MutableMap<String, Task> = mutableMapOf()
+    val checkedModelNames = mutableSetOf<String>()
+    for (customTask in getActiveCustomTasks()) {
+      val task = customTask.task
+      tasks.put(key = task.id, value = task)
+      for (model in task.models) {
+        if (checkedModelNames.contains(model.name)) {
+          continue
+        }
+        modelDownloadStatus[model.name] = getModelDownloadStatus(model = model)
+        modelInstances[model.name] =
+          ModelInitializationStatus(status = ModelInitializationStatusType.NOT_INITIALIZED)
+        checkedModelNames.add(model.name)
+      }
+    }
+
+    // Load imported models.
+    for (importedModel in dataStoreRepository.readImportedModels()) {
+      Log.d(TAG, "stored imported model: $importedModel")
+
+      // Create model.
+      val model = createModelFromImportedModelInfo(info = importedModel)
+
+      // Add to task.
+      tasks.get(key = BuiltInTaskId.LLM_CHAT)?.models?.add(model)
+      tasks.get(key = BuiltInTaskId.LLM_PROMPT_LAB)?.models?.add(model)
+      tasks.get(key = BuiltInTaskId.LLM_AGENT_CHAT)?.models?.add(model)
+      tasks.get(key = BuiltInTaskId.RAG)?.models?.add(model)
+      if (model.llmSupportImage) {
+        tasks.get(key = BuiltInTaskId.LLM_ASK_IMAGE)?.models?.add(model)
+        tasks.get(key = BuiltInTaskId.VISION)?.models?.add(model)
+      }
+      if (model.llmSupportAudio) {
+        tasks.get(key = BuiltInTaskId.LLM_ASK_AUDIO)?.models?.add(model)
+      }
+      if (model.llmSupportTinyGarden) {
+        tasks.get(key = BuiltInTaskId.LLM_TINY_GARDEN)?.models?.add(model)
+        val newConfigs = model.configs.toMutableList()
+        newConfigs.add(RESET_CONVERSATION_TURN_COUNT_CONFIG)
+        model.configs = newConfigs
+        model.preProcess()
+        loadModelConfig(model)
+      }
+      if (model.llmSupportMobileActions) {
+        tasks.get(key = BuiltInTaskId.LLM_MOBILE_ACTIONS)?.models?.add(model)
+      }
+
+      // Update status.
+      if (model.url.isNotEmpty()) {
+        modelDownloadStatus[model.name] = getModelDownloadStatus(model = model)
+      } else {
+        modelDownloadStatus[model.name] =
+          ModelDownloadStatus(
+            status = ModelDownloadStatusType.SUCCEEDED,
+            receivedBytes = importedModel.fileSize,
+            totalBytes = importedModel.fileSize,
+          )
+      }
+    }
+
+    val textInputHistory = dataStoreRepository.readTextInputHistory()
+    Log.d(TAG, "text input history: $textInputHistory")
+
+    Log.d(TAG, "model download status: $modelDownloadStatus")
+    return ModelManagerUiState(
+      tasks = getActiveCustomTasks().map { it.task }.toList(),
+      tasksByCategory = mapOf(),
+      modelDownloadStatus = modelDownloadStatus,
+      modelInitializationStatus = modelInstances,
+      textInputHistory = textInputHistory,
+    )
+  }
+
+  private fun createModelFromImportedModelInfo(info: ImportedModel): Model {
+    val accelerators: MutableList<Accelerator> =
+      info.llmConfig.compatibleAcceleratorsList
+        .mapNotNull { acceleratorLabel ->
+          when (acceleratorLabel.trim()) {
+            Accelerator.GPU.label -> Accelerator.GPU
+            Accelerator.CPU.label -> Accelerator.CPU
+            Accelerator.NPU.label -> Accelerator.NPU
+
+            else -> null // Ignore unknown accelerator labels
+          }
+        }
+        .toMutableList()
+    val llmMaxToken = info.llmConfig.defaultMaxTokens
+    val llmSupportImage = info.llmConfig.supportImage
+    val llmSupportAudio = info.llmConfig.supportAudio
+    val llmSupportTinyGarden = info.llmConfig.supportTinyGarden
+    val llmSupportMobileActions = info.llmConfig.supportMobileActions
+    val llmSupportThinking = info.llmConfig.supportThinking
+    val llmSupportSpeculativeDecoding = info.llmConfig.supportSpeculativeDecoding
+    val configs: MutableList<Config> =
+      createLlmChatConfigs(
+          defaultMaxToken = llmMaxToken,
+          defaultTopK = info.llmConfig.defaultTopk,
+          defaultTopP = info.llmConfig.defaultTopp,
+          defaultTemperature = info.llmConfig.defaultTemperature,
+          accelerators = accelerators,
+          supportThinking = llmSupportThinking,
+          supportSpeculativeDecoding = llmSupportSpeculativeDecoding,
+        )
+        .toMutableList()
+    val capabilities: MutableList<ModelCapability> = mutableListOf()
+    val capabilityToTaskTypes: MutableMap<ModelCapability, List<String>> = mutableMapOf()
+    if (llmSupportThinking) {
+      capabilities.add(ModelCapability.LLM_THINKING)
+      capabilityToTaskTypes[ModelCapability.LLM_THINKING] =
+        listOf(
+          BuiltInTaskId.LLM_CHAT,
+          BuiltInTaskId.LLM_ASK_IMAGE,
+          BuiltInTaskId.VISION,
+          BuiltInTaskId.LLM_ASK_AUDIO,
+        )
+    }
+    if (llmSupportSpeculativeDecoding) {
+      capabilities.add(ModelCapability.SPECULATIVE_DECODING)
+      capabilityToTaskTypes[ModelCapability.SPECULATIVE_DECODING] =
+        listOf(
+          BuiltInTaskId.LLM_CHAT,
+          BuiltInTaskId.LLM_ASK_IMAGE,
+          BuiltInTaskId.VISION,
+          BuiltInTaskId.LLM_ASK_AUDIO,
+          BuiltInTaskId.LLM_PROMPT_LAB,
+        )
+    }
+    val model =
+      Model(
+        name = info.fileName,
+        url = info.url,
+        configs = configs,
+        sizeInBytes = info.fileSize,
+        downloadFileName = info.fileName,
+        showBenchmarkButton = false,
+        showRunAgainButton = false,
+        imported = true,
+        llmSupportImage = llmSupportImage,
+        llmSupportAudio = llmSupportAudio,
+        llmSupportTinyGarden = llmSupportTinyGarden,
+        llmSupportMobileActions = llmSupportMobileActions,
+        capabilities = capabilities.toList(),
+        capabilityToTaskTypes = capabilityToTaskTypes.toMap(),
+        llmMaxToken = llmMaxToken,
+        accelerators = accelerators,
+        // We assume all imported models are LLM for now.
+        isLlm = true,
+        runtimeType = RuntimeType.LITERT_LM,
+      )
+    model.preProcess()
+    loadModelConfig(model)
+
+    return model
+  }
+
+  private fun groupTasksByCategory(): Map<String, List<Task>> {
+    val tasks = getActiveCustomTasks().map { it.task }
+
+    val categoryMap: Map<String, CategoryInfo> =
+      tasks.associateBy { it.category.id }.mapValues { it.value.category }
+
+    val groupedTasks = tasks.groupBy { it.category.id }
+    val groupedSortedTasks: MutableMap<String, List<Task>> = mutableMapOf()
+    // Sort the tasks in categories by pre-defined order. Sort other tasks by label.
+    for (categoryId in groupedTasks.keys) {
+      val sortedTasks =
+        groupedTasks[categoryId]!!.sortedWith { a, b ->
+          if (categoryId == Category.LLM.id) {
+            val order: List<String> =
+              when (categoryId) {
+                Category.LLM.id -> PREDEFINED_LLM_TASK_ORDER
+                else -> listOf()
+              }
+            val indexA = order.indexOf(a.id)
+            val indexB = order.indexOf(b.id)
+            if (indexA != -1 && indexB != -1) {
+              indexA.compareTo(indexB)
+            } else if (indexA != -1) {
+              -1
+            } else if (indexB != -1) {
+              1
+            } else {
+              val ca = categoryMap[a.id]!!
+              val cb = categoryMap[b.id]!!
+              val caLabel = getCategoryLabel(context = context, category = ca)
+              val cbLabel = getCategoryLabel(context = context, category = cb)
+              caLabel.compareTo(cbLabel)
+            }
+          } else {
+            a.label.compareTo(b.label)
+          }
+        }
+      for ((index, task) in sortedTasks.withIndex()) {
+        task.index = index
+      }
+      groupedSortedTasks[categoryId] = sortedTasks
+    }
+
+    return groupedSortedTasks
+  }
+
+  private fun getCategoryLabel(context: Context, category: CategoryInfo): String {
+    val stringRes = category.labelStringRes
+    val label = category.label
+    if (stringRes != null) {
+      return context.getString(stringRes)
+    } else if (label != null) {
+      return label
+    }
+    return context.getString(R.string.category_unlabeled)
+  }
+
+  /**
+   * Retrieves the download status of a model.
+   *
+   * This function determines the download status of a given model by checking if it's fully
+   * downloaded, partially downloaded, or not downloaded at all. It also retrieves the received and
+   * total bytes for partially downloaded models.
+   */
+  private fun getModelDownloadStatus(model: Model): ModelDownloadStatus {
+    Log.d(TAG, "Checking model ${model.name} download status...")
+
+    if (model.localFileRelativeDirPathOverride.isNotEmpty()) {
+      Log.d(TAG, "Model has localFileRelativeDirPathOverride set. Set status to SUCCEEDED")
+      return ModelDownloadStatus(
+        status = ModelDownloadStatusType.SUCCEEDED,
+        receivedBytes = 0,
+        totalBytes = 0,
+      )
+    }
+
+    var status = ModelDownloadStatusType.NOT_DOWNLOADED
+    var receivedBytes = 0L
+    var totalBytes = 0L
+
+    // Partially downloaded.
+    if (isModelPartiallyDownloaded(model = model)) {
+      status = ModelDownloadStatusType.PARTIALLY_DOWNLOADED
+      val tmpFilePath =
+        model.getPath(context = context, fileName = "${model.downloadFileName}.$TMP_FILE_EXT")
+      val tmpFile = File(tmpFilePath)
+      receivedBytes = tmpFile.length()
+      totalBytes = model.totalBytes
+      Log.d(TAG, "${model.name} is partially downloaded. $receivedBytes/$totalBytes")
+    }
+    // Fully downloaded.
+    else if (isModelDownloaded(model = model)) {
+      status = ModelDownloadStatusType.SUCCEEDED
+      Log.d(TAG, "${model.name} has been downloaded.")
+    }
+    // Not downloaded.
+    else {
+      Log.d(TAG, "${model.name} has not been downloaded.")
+    }
+
+    return ModelDownloadStatus(
+      status = status,
+      receivedBytes = receivedBytes,
+      totalBytes = totalBytes,
+    )
+  }
+
+  private fun isFileInExternalFilesDir(fileName: String): Boolean {
+    if (externalFilesDir != null) {
+      val file = File(externalFilesDir, fileName)
+      return file.exists()
+    } else {
+      return false
+    }
+  }
+
+  private fun isFileInDataLocalTmpDir(fileName: String): Boolean {
+    val file = File("/data/local/tmp", fileName)
+    return file.exists()
+  }
+
+  private fun deleteFileFromExternalFilesDir(fileName: String) {
+    if (isFileInExternalFilesDir(fileName)) {
+      val file = File(externalFilesDir, fileName)
+      file.delete()
+    }
+  }
+
+  /**
+   * Deletes files from the the model imports directory whose absolute paths start with a given
+   * prefix.
+   */
+  private fun deleteFilesFromImportDir(fileName: String) {
+    val dir = context.getExternalFilesDir(null) ?: return
+
+    val prefixAbsolutePath =
+      "${context.getExternalFilesDir(null)}${File.separator}$IMPORTS_DIR${File.separator}$fileName"
+    val filesToDelete =
+      File(dir, IMPORTS_DIR).listFiles { dirFile, name ->
+        File(dirFile, name).absolutePath.startsWith(prefixAbsolutePath)
+      } ?: arrayOf()
+    for (file in filesToDelete) {
+      Log.d(TAG, "Deleting file: ${file.name}")
+      file.delete()
+    }
+  }
+
+  private fun deleteDirFromExternalFilesDir(dir: String) {
+    if (isFileInExternalFilesDir(dir)) {
+      val file = File(externalFilesDir, dir)
+      file.deleteRecursively()
+    }
+  }
+
+  private fun updateModelInitializationStatus(
+    model: Model,
+    status: ModelInitializationStatusType,
+    error: String = "",
+  ) {
+    val curModelInstance = uiState.value.modelInitializationStatus.toMutableMap()
+    val initializedBackends = curModelInstance[model.name]?.initializedBackends ?: setOf()
+    val backend =
+      model.getStringConfigValue(key = ConfigKeys.ACCELERATOR, defaultValue = Accelerator.GPU.label)
+    val newInitializedBackends =
+      if (status == ModelInitializationStatusType.INITIALIZED) {
+        initializedBackends + backend
+      } else {
+        initializedBackends
+      }
+    curModelInstance[model.name] =
+      ModelInitializationStatus(
+        status = status,
+        error = error,
+        initializedBackends = newInitializedBackends,
+      )
+    _uiState.update { it.copy(modelInitializationStatus = curModelInstance) }
+  }
+
+  fun isModelDownloaded(model: Model): Boolean {
+    model.updatable = false
+    // First, check if the model with the current (latest) version has been downloaded.
+    if (checkIfModelDownloaded(model, model.version)) return true
+
+    // If not, check if any updatable model file (previous version) has been downloaded.
+    for (updatableFile in model.updatableModelFiles) {
+      if (updatableFile.commitHash.isEmpty()) continue
+      if (checkIfModelDownloaded(model, updatableFile.commitHash, updatableFile.fileName)) {
+        // If an updatable version is found on the device, update the model's version and file name
+        // to match the downloaded one, and mark it as updatable.
+        model.version = updatableFile.commitHash
+        model.downloadFileName = updatableFile.fileName
+        model.updatable = true
+        return true
+      }
+    }
+
+    return false
+  }
+
+  private fun checkIfModelDownloaded(
+    model: Model,
+    version: String,
+    fileName: String = model.downloadFileName,
+  ): Boolean {
+    val modelRelativePath =
+      if (model.imported) {
+        listOf(IMPORTS_DIR, fileName).joinToString(File.separator)
+      } else {
+        listOf(model.normalizedName, version, fileName).joinToString(File.separator)
+      }
+    val downloadedFileExists =
+      fileName.isNotEmpty() &&
+        ((model.localModelFilePathOverride.isEmpty() &&
+          isFileInExternalFilesDir(modelRelativePath)) ||
+          (model.localModelFilePathOverride.isNotEmpty() &&
+            File(model.localModelFilePathOverride).exists()))
+
+    val unzippedDirectoryExists =
+      model.isZip &&
+        model.unzipDir.isNotEmpty() &&
+        isFileInExternalFilesDir(
+          listOf(model.normalizedName, version, model.unzipDir).joinToString(File.separator)
+        )
+
+    return downloadedFileExists || unzippedDirectoryExists
+  }
+
+  fun saveModelConfig(model: Model) {
+    val prefs = context.getSharedPreferences("model_configs", Context.MODE_PRIVATE)
+    val gson = Gson()
+    val json = gson.toJson(model.configValues)
+    prefs.edit().putString(model.name, json).apply()
+  }
+
+  fun loadModelConfig(model: Model) {
+    val prefs = context.getSharedPreferences("model_configs", Context.MODE_PRIVATE)
+    val json = prefs.getString(model.name, null)
+    if (json != null) {
+      try {
+        val type: Type = object : TypeToken<Map<String, Any>>() {}.type
+        val savedValues: Map<String, Any> = Gson().fromJson(json, type)
+        val mergedValues = model.configValues.toMutableMap()
+        for (config in model.configs) {
+            val key = config.key.label
+            if (savedValues.containsKey(key)) {
+                val value = savedValues[key]
+                if (value != null) {
+                    mergedValues[key] = convertValueToTargetType(value, config.valueType)
+                }
+            }
+        }
+        model.configValues = mergedValues
+      } catch (e: Exception) {
+        e.printStackTrace()
+      }
+    }
+  }
+}

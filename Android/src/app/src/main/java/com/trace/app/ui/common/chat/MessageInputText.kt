@@ -1,0 +1,1578 @@
+/*
+ * Copyright 2025 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.trace.app.ui.common.chat
+
+import android.Manifest
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Matrix
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.net.Uri
+import android.util.Log
+import android.util.Size
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.StringRes
+import androidx.camera.core.CameraControl
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageProxy
+import androidx.camera.core.resolutionselector.AspectRatioStrategy
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.lifecycle.awaitInstance
+import androidx.camera.view.PreviewView
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.rounded.AudioFile
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.InsertDriveFile
+import androidx.compose.material.icons.rounded.FlipCameraAndroid
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.Photo
+import androidx.compose.material.icons.rounded.PhotoCamera
+import androidx.compose.material.icons.rounded.Stop
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuDefaults
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedIconButton
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
+import androidx.core.graphics.scale
+import androidx.exifinterface.media.ExifInterface
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.trace.app.R
+import com.trace.app.common.AudioClip
+import com.trace.app.common.convertWavToMonoWithMaxSeconds
+import com.trace.app.common.decodeSampledBitmapFromUri
+import com.trace.app.common.rotateBitmap
+import com.trace.app.data.MAX_AUDIO_CLIP_COUNT
+import com.trace.app.data.MAX_IMAGE_COUNT
+import com.trace.app.data.MAX_IMAGE_COUNT_AI_CORE
+import com.trace.app.data.RuntimeType
+import com.trace.app.data.SAMPLE_RATE
+import com.trace.app.data.Task
+import com.trace.app.ui.common.getTaskIconColor
+import com.trace.app.ui.modelmanager.ModelManagerViewModel
+import com.trace.app.ui.theme.bodyLargeNarrow
+import java.io.FileInputStream
+import java.util.concurrent.Executors
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.trace.app.ui.common.textandvoiceinput.HoldToDictateViewModel
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+
+private const val TAG = "AGMessageInputText"
+
+/**
+ * Composable function to display a text input field for composing chat messages.
+ *
+ * This function renders a row containing a text field for message input and a send button. It
+ * handles message composition, input validation, and sending messages.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MessageInputText(
+  task: Task,
+  modelManagerViewModel: ModelManagerViewModel,
+  curMessage: String,
+  isResettingSession: Boolean,
+  inProgress: Boolean,
+  imageCount: Int,
+  audioClipMessageCount: Int,
+  skillCount: Int = 0,
+  mcpCount: Int = 0,
+  modelInitializing: Boolean,
+  @StringRes textFieldPlaceHolderRes: Int,
+  onValueChanged: (String) -> Unit,
+  onSendMessage: (List<ChatMessage>) -> Unit,
+  modelPreparing: Boolean = false,
+  onOpenPromptTemplatesClicked: () -> Unit = {},
+  onStopButtonClicked: () -> Unit = {},
+  onSetAudioRecorderVisible: (visible: Boolean) -> Unit = {},
+  onAmplitudeChanged: (Int) -> Unit,
+  onSkillsClicked: () -> Unit = {},
+  onMcpClicked: () -> Unit = {},
+  onPickedImagesChanged: (List<Bitmap>) -> Unit = {},
+  onPickedAudioClipsChanged: (List<AudioClip>) -> Unit = {},
+  // Fired when the set of attached documents changes (e.g. so a screen can
+  // ingest a doc immediately on pick rather than waiting for send).
+  onPickedFilesChanged: (List<android.net.Uri>) -> Unit = {},
+  showPromptTemplatesInMenu: Boolean = false,
+  showSkillsPicker: Boolean = false,
+  showMcpPicker: Boolean = false,
+  showImagePicker: Boolean = false,
+  showAttachDocument: Boolean = false,
+  showAudioPicker: Boolean = false,
+  voiceButton: @Composable () -> Unit = {},
+  leadingSendAction: @Composable () -> Unit = {},
+  showStopButtonWhenInProgress: Boolean = false,
+  onImageLimitExceeded: () -> Unit = {},
+  onModelNotSupportImage: () -> Unit = {},
+  onModelNotSupportAudio: () -> Unit = {},
+  // Voice-originated messages (PTT) use this callback so TTS can be enabled.
+  onSendVoiceMessage: (List<ChatMessage>) -> Unit = onSendMessage,
+) {
+  val context = LocalContext.current
+  val lifecycleOwner = LocalLifecycleOwner.current
+
+  val voiceViewModel: HoldToDictateViewModel = hiltViewModel()
+  val voiceUiState by voiceViewModel.uiState.collectAsState()
+
+  LaunchedEffect(voiceUiState.recognizedText) {
+    if (voiceUiState.recognizing) {
+      onValueChanged(voiceUiState.recognizedText)
+    }
+  }
+
+  val scope = rememberCoroutineScope()
+  val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
+  var showAddContentMenu by remember { mutableStateOf(false) }
+  var showTextInputHistorySheet by remember { mutableStateOf(false) }
+  var showCameraCaptureBottomSheet by remember { mutableStateOf(false) }
+  val cameraCaptureSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+  var showAudioRecorder by remember { mutableStateOf(false) }
+  val audioRecorderSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+  var pickedImages by remember { mutableStateOf<List<Bitmap>>(listOf()) }
+  var pickedFiles by remember { mutableStateOf<List<Pair<android.net.Uri, String>>>(listOf()) }
+  var pickedAudioClips by remember { mutableStateOf<List<AudioClip>>(listOf()) }
+  var hasFrontCamera by remember { mutableStateOf(false) }
+  val sensorObserver = remember { SensorObserver(context) }
+
+  val updatePickedImages: (List<Bitmap>) -> Unit = { bitmaps ->
+    val isAiCore = modelManagerUiState.selectedModel.runtimeType == RuntimeType.AICORE
+    var limit = MAX_IMAGE_COUNT
+    if (isAiCore) {
+      limit = MAX_IMAGE_COUNT_AI_CORE
+    }
+    val maxAllowedForThisMessage = (limit - imageCount).coerceAtLeast(0)
+
+    val combinedSize = pickedImages.size + bitmaps.size
+    val withinLimit = combinedSize <= maxAllowedForThisMessage
+
+    pickedImages =
+      if (withinLimit) {
+        pickedImages + bitmaps
+      } else {
+        // Notify for all model types — non-AiCore models were silently truncating with no feedback.
+        scope.launch(Dispatchers.Main) { onImageLimitExceeded() }
+        (pickedImages + bitmaps).take(maxAllowedForThisMessage)
+      }
+  }
+
+  val updatePickedAudioClips: (List<AudioClip>) -> Unit = { audioDataList ->
+    val maxAllowedForThisMessage = (MAX_AUDIO_CLIP_COUNT - audioClipMessageCount).coerceAtLeast(0)
+
+    val combinedSize = pickedAudioClips.size + audioDataList.size
+    val withinLimit = combinedSize <= maxAllowedForThisMessage
+
+    pickedAudioClips =
+      if (withinLimit) {
+        pickedAudioClips + audioDataList
+      } else {
+        (pickedAudioClips + audioDataList).take(maxAllowedForThisMessage)
+      }
+  }
+
+  LaunchedEffect(Unit) { checkFrontCamera(context = context, callback = { hasFrontCamera = it }) }
+
+  LaunchedEffect(pickedImages) { onPickedImagesChanged(pickedImages) }
+
+  LaunchedEffect(pickedAudioClips) { onPickedAudioClipsChanged(pickedAudioClips) }
+  LaunchedEffect(pickedFiles) { onPickedFilesChanged(pickedFiles.map { it.first }) }
+  
+  var pendingFileFetchQuery by remember { mutableStateOf<String?>(null) }
+  
+  val storagePermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+    androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+  ) { permissions ->
+    val allGranted = permissions.entries.all { it.value }
+    val query = pendingFileFetchQuery
+    if (allGranted && query != null) {
+      android.widget.Toast.makeText(context, "Searching your files…", android.widget.Toast.LENGTH_SHORT).show()
+      scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        val result = safeFindFile(context, query, modelManagerViewModel.getDocumentTreeUri())
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+          if (result != null) {
+            val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+              setDataAndType(result.uri, context.contentResolver.getType(result.uri) ?: "*/*")
+              addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            try {
+              context.startActivity(viewIntent)
+            } catch (_: Exception) {
+              android.widget.Toast.makeText(context, "No app found to open this file", android.widget.Toast.LENGTH_SHORT).show()
+            }
+          } else {
+            android.widget.Toast.makeText(context, "Could not find: $query", android.widget.Toast.LENGTH_SHORT).show()
+          }
+        }
+      }
+    }
+    pendingFileFetchQuery = null
+  }
+
+  val performFileFetch: (String) -> Unit = { query ->
+    val hasPermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+      androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_MEDIA_IMAGES) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    } else {
+      androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    }
+    if (hasPermission) {
+      // Run on IO — semantic fallback (Pass 2) can take up to ~20s; must not block Main.
+      android.widget.Toast.makeText(context, "Searching your files\u2026", android.widget.Toast.LENGTH_SHORT).show()
+      scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        val result = safeFindFile(context, query, modelManagerViewModel.getDocumentTreeUri())
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+          if (result != null) {
+            val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+              setDataAndType(result.uri, context.contentResolver.getType(result.uri) ?: "*/*")
+              addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            try {
+              context.startActivity(viewIntent)
+            } catch (_: Exception) {
+              android.widget.Toast.makeText(context, "No app found to open this file", android.widget.Toast.LENGTH_SHORT).show()
+            }
+          } else {
+            android.widget.Toast.makeText(context, "Could not find: $query", android.widget.Toast.LENGTH_SHORT).show()
+          }
+        }
+      }
+    } else {
+      pendingFileFetchQuery = query
+      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+        storagePermissionLauncher.launch(arrayOf(android.Manifest.permission.READ_MEDIA_IMAGES, android.Manifest.permission.READ_MEDIA_VIDEO, android.Manifest.permission.READ_MEDIA_AUDIO))
+      } else {
+        storagePermissionLauncher.launch(arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE))
+      }
+    }
+  }
+
+  val mediaProjectionLauncher = rememberLauncherForActivityResult(
+    androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+  ) { result ->
+    if (result.resultCode == android.app.Activity.RESULT_OK && result.data != null) {
+      val intent = android.content.Intent(context, com.trace.app.ocr.ScreenCaptureService::class.java).apply {
+        putExtra(com.trace.app.ocr.ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
+        putExtra(com.trace.app.ocr.ScreenCaptureService.EXTRA_RESULT_DATA, result.data)
+      }
+      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+          context.startForegroundService(intent)
+      } else {
+          context.startService(intent)
+      }
+    }
+  }
+
+  // Single intent router instance (was reconstructed on every tap at both dispatch sites).
+  val intentRouter = remember(context) { com.trace.app.voice.IntentRouter(context) }
+
+  // Unified dispatch for both the send button and the voice (PTT) path. Previously these were
+  // two divergent copies: the voice path tagged LLM_CHAT text with InteractionOrigin.VOICE and
+  // used speakResponse=true, the send path did neither — so typed messages never carried origin.
+  val dispatchIntent: (String, Boolean, List<ChatMessage>) -> Unit = dispatch@{ text, isVoice, messages ->
+    val intentResult = intentRouter.routeIntent(text)
+    when (intentResult.type) {
+      com.trace.app.voice.IntentType.FILE_FETCH -> {
+        performFileFetch(intentResult.extractedFileName.orEmpty())
+      }
+      com.trace.app.voice.IntentType.SCREEN_EXPLAIN -> {
+        com.trace.app.ocr.ScreenExplainManager.requestCapture(
+          com.trace.app.ocr.ScreenExplainRequest(text, speakResponse = isVoice)
+        )
+        if (!com.trace.app.ocr.ScreenExplainManager.isServiceRunning) {
+          val projectionManager = context.getSystemService(android.content.Context.MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
+          mediaProjectionLauncher.launch(projectionManager.createScreenCaptureIntent())
+        }
+      }
+      com.trace.app.voice.IntentType.LLM_CHAT -> {
+        if (isVoice) onSendVoiceMessage(messages) else onSendMessage(messages)
+      }
+    }
+  }
+
+  LaunchedEffect(Unit) {
+      com.trace.app.ocr.ScreenExplainManager.results.collect { result ->
+          val prompt = buildString {
+              append(result.question)
+              if (result.ocrText.isNotBlank()) {
+                  append("\n\nVisible screen text:\n")
+                  append(result.ocrText)
+              }
+          }
+          val messages = mutableListOf<ChatMessage>(
+              ChatMessageText(
+                  content = prompt,
+                  side = ChatSide.USER,
+              )
+          )
+          result.bitmap?.let { bitmap ->
+              messages += ChatMessageImage(
+                  bitmaps = listOf(bitmap),
+                  imageBitMaps = listOf(bitmap.asImageBitmap()),
+                  side = ChatSide.USER,
+              )
+          }
+          if (result.speakResponse) {
+              onSendVoiceMessage(messages)
+          } else {
+              onSendMessage(messages)
+          }
+      }
+  }
+
+  // Permission request when taking picture.
+  val takePicturePermissionLauncher =
+    rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+      permissionGranted ->
+      if (permissionGranted) {
+        showAddContentMenu = false
+        showCameraCaptureBottomSheet = true
+      }
+    }
+
+  val handleClickRecordAudioClip = {
+    showAddContentMenu = false
+    showAudioRecorder = true
+    onSetAudioRecorderVisible(true)
+  }
+
+  // Permission request when recording audio clips.
+  val recordAudioClipsPermissionLauncher =
+    rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+      permissionGranted ->
+      if (permissionGranted) {
+        handleClickRecordAudioClip()
+      }
+    }
+
+  val handleStartSpeech = {
+    voiceViewModel.startSpeechRecognition(
+      onDone = { text ->
+        if (text.isNotBlank()) {
+          val voiceMessages = createMessagesToSend(
+            pickedImages = pickedImages,
+            pickedFiles = pickedFiles,
+            audioClips = pickedAudioClips,
+            text = text.trim(),
+          ).map { message ->
+            // Tag text as VOICE so the ViewModel speaks the response via TTS.
+            if (message is ChatMessageText) {
+              ChatMessageText(message.content, message.side, data = com.trace.app.voice.InteractionOrigin.VOICE)
+            } else message
+          }
+          dispatchIntent(text, true, voiceMessages)
+          updatePickedImages(listOf())
+          pickedFiles = listOf()
+          pickedAudioClips = listOf()
+          onValueChanged("")
+        }
+      },
+      onAmplitudeChanged = {}
+    )
+  }
+
+  val speechPermissionLauncher =
+    rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+      permissionGranted ->
+      if (permissionGranted) {
+        handleStartSpeech()
+      } else {
+        android.widget.Toast.makeText(context, "Microphone permission required for voice", android.widget.Toast.LENGTH_SHORT).show()
+      }
+    }
+
+  // Registers a photo picker activity launcher in single-select mode.
+  val pickMedia =
+    rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
+      // Callback is invoked after the user selects media items or closes the
+      // photo picker.
+      if (uris.isNotEmpty()) {
+        scope.launch(Dispatchers.IO) {
+          handleImagesSelected(
+            context = context,
+            uris = uris,
+            onImagesSelected = { bitmaps -> updatePickedImages(bitmaps) },
+          )
+        }
+      }
+    }
+
+  val pickFile =
+    rememberLauncherForActivityResult(
+      contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+      if (uri != null) {
+        // Take persistable read permission so the URI doesn't expire
+        try {
+          context.contentResolver.takePersistableUriPermission(
+            uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+          )
+        } catch (_: Exception) { /* non-persistable URIs are fine to ignore */ }
+
+        // Extract document text on IO thread using type-aware DocumentExtractor.
+        // PDFs are rendered page-by-page via PdfRenderer + ML Kit OCR.
+        // Plain text / DOCX / PPTX use fast structural extraction.
+        scope.launch(Dispatchers.IO) {
+          try {
+            val mimeType = context.contentResolver.getType(uri) ?: ""
+            val isPdf = mimeType == "application/pdf"
+
+            // Show a toast so user knows extraction is underway (PDF OCR takes a few seconds)
+            if (isPdf) {
+              kotlinx.coroutines.withContext(Dispatchers.Main) {
+                android.widget.Toast.makeText(
+                  context, "Extracting PDF text…", android.widget.Toast.LENGTH_SHORT
+                ).show()
+              }
+            }
+
+            val extractor = com.trace.app.common.DocumentExtractor(context)
+            val textContent = extractor.extract(uri)
+
+            kotlinx.coroutines.withContext(Dispatchers.Main) {
+              if (!textContent.isNullOrBlank()) {
+                pickedFiles = pickedFiles + Pair(uri, textContent)
+              } else {
+                android.widget.Toast.makeText(
+                  context, "Could not extract text from document", android.widget.Toast.LENGTH_SHORT
+                ).show()
+              }
+            }
+          } catch (e: Exception) {
+            Log.e(TAG, "Failed to extract document", e)
+            kotlinx.coroutines.withContext(Dispatchers.Main) {
+              android.widget.Toast.makeText(
+                context, "Failed to read document: ${e.message}", android.widget.Toast.LENGTH_SHORT
+              ).show()
+            }
+          }
+        }
+      }
+    }
+
+  val pickWav =
+    rememberLauncherForActivityResult(
+      contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+      if (result.resultCode == android.app.Activity.RESULT_OK) {
+        result.data?.data?.let { uri ->
+          Log.d(TAG, "Picked wav file: $uri")
+          scope.launch(Dispatchers.IO) {
+            handleAudioWavSelected(
+              context = context,
+              uri = uri,
+              onAudioSelected = { audioClip ->
+                updatePickedAudioClips(
+                  listOf(
+                    AudioClip(audioData = audioClip.audioData, sampleRate = audioClip.sampleRate)
+                  )
+                )
+              },
+            )
+          }
+        }
+      } else {
+        Log.d(TAG, "Wav picking cancelled.")
+      }
+    }
+
+  DisposableEffect(lifecycleOwner) {
+    lifecycleOwner.lifecycle.addObserver(sensorObserver)
+    onDispose { lifecycleOwner.lifecycle.removeObserver(sensorObserver) }
+  }
+
+  Column {
+    // A preview panel for the selected images and audio clips.
+    if (pickedImages.isNotEmpty() || pickedAudioClips.isNotEmpty() || pickedFiles.isNotEmpty()) {
+      Row(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+      ) {
+        Spacer(modifier = Modifier.width(16.dp))
+
+        for (image in pickedImages) {
+          Box(contentAlignment = Alignment.TopEnd) {
+            Image(
+              bitmap = image.asImageBitmap(),
+              contentDescription = stringResource(R.string.cd_image_thumbnail),
+              modifier =
+                Modifier.height(80.dp)
+                  .shadow(2.dp, shape = RoundedCornerShape(8.dp))
+                  .clip(RoundedCornerShape(8.dp))
+                  .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp)),
+            )
+            MediaPanelCloseButton { pickedImages = pickedImages.filter { image != it } }
+          }
+        }
+
+        for (fileUri in pickedFiles) {
+          Box(modifier = Modifier.size(64.dp).padding(4.dp)) {
+            // Draw a simple file icon chip
+            Box(
+              modifier = Modifier.fillMaxSize()
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+              contentAlignment = Alignment.Center
+            ) {
+              Icon(
+                imageVector = Icons.Rounded.InsertDriveFile,
+                contentDescription = "File",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+              )
+            }
+            MediaPanelCloseButton { pickedFiles = pickedFiles.filter { fileUri != it } }
+          }
+        }
+
+        for ((index, audioClip) in pickedAudioClips.withIndex()) {
+          Box(contentAlignment = Alignment.TopEnd) {
+            Box(
+              modifier =
+                Modifier.shadow(2.dp, shape = RoundedCornerShape(8.dp))
+                  .clip(RoundedCornerShape(8.dp))
+                  .background(MaterialTheme.colorScheme.surface)
+                  .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp))
+            ) {
+              AudioPlaybackPanel(
+                audioData = audioClip.audioData,
+                sampleRate = audioClip.sampleRate,
+                isRecording = false,
+                modifier = Modifier.padding(end = 16.dp),
+              )
+            }
+            MediaPanelCloseButton {
+              pickedAudioClips = pickedAudioClips.filterIndexed { curIndex, curAudioData ->
+                curIndex != index
+              }
+            }
+          }
+        }
+
+        Spacer(modifier = Modifier.width(16.dp))
+      }
+    }
+
+    Box(contentAlignment = Alignment.Center, modifier = Modifier.heightIn(min = 76.dp)) {
+      AnimatedContent(targetState = showAudioRecorder) { curShowAudioRecorder ->
+        when (curShowAudioRecorder) {
+          // Input
+          false ->
+            Column(
+              modifier =
+                Modifier.padding(horizontal = 12.dp)
+                  .padding(vertical = 8.dp)
+                  .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp))
+            ) {
+              // First row: text field for input.
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+              ) {
+                // Text field.
+                val cdPromptInput = stringResource(R.string.cd_prompt_input_text_field)
+                TextField(
+                  value = curMessage,
+                  minLines = 1,
+                  maxLines = 3,
+                  onValueChange = onValueChanged,
+                  colors =
+                    TextFieldDefaults.colors(
+                      unfocusedContainerColor = Color.Transparent,
+                      focusedContainerColor = Color.Transparent,
+                      focusedIndicatorColor = Color.Transparent,
+                      unfocusedIndicatorColor = Color.Transparent,
+                      disabledIndicatorColor = Color.Transparent,
+                      disabledContainerColor = Color.Transparent,
+                    ),
+                  textStyle = bodyLargeNarrow,
+                  modifier = Modifier.weight(1f).semantics { contentDescription = cdPromptInput },
+                  placeholder = { Text(stringResource(textFieldPlaceHolderRes)) },
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+              }
+
+              // Second row: buttons to add extra content, and the action button.
+              Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).offset(y = (-8).dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+              ) {
+                Row(
+                  verticalAlignment = Alignment.CenterVertically,
+                  horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                  // A plus button to show a popup menu to add stuff to the chat.
+                  Box() {
+                    val enableAddButton = !inProgress && !isResettingSession && !modelInitializing
+                    OutlinedIconButton(
+                      enabled = enableAddButton,
+                      onClick = { showAddContentMenu = true },
+                      colors =
+                        IconButtonDefaults.iconButtonColors(
+                          disabledContentColor =
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)
+                        ),
+                      border =
+                        IconButtonDefaults.outlinedIconButtonBorder(true)
+                          .copy(
+                            brush =
+                              SolidColor(
+                                MaterialTheme.colorScheme.outlineVariant.copy(
+                                  alpha = if (enableAddButton) 1f else 0.1f
+                                )
+                              )
+                          ),
+                    ) {
+                      Icon(
+                        Icons.Outlined.Add,
+                        contentDescription = stringResource(R.string.cd_add_content_icon),
+                        modifier = Modifier.size(24.dp),
+                      )
+                    }
+
+                    DropdownMenu(
+                      expanded = showAddContentMenu,
+                      onDismissRequest = { showAddContentMenu = false },
+                    ) {
+                      // Attach document — gated independently so Vision (image-only)
+                      // can hide it while keeping the image pickers, and Notes can
+                      // show only this.
+                      if (showAttachDocument) {
+                        DropdownMenuItem(
+                          text = {
+                            Row(
+                              verticalAlignment = Alignment.CenterVertically,
+                              horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                              Icon(Icons.Rounded.InsertDriveFile, contentDescription = null)
+                              Text("Attach document")
+                            }
+                          },
+                          onClick = {
+                            showAddContentMenu = false
+                            pickFile.launch(arrayOf("application/pdf", "text/*", "text/markdown", "text/html", "application/octet-stream", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.presentationml.presentation"))
+                          },
+                        )
+                      }
+
+                      if (showImagePicker) {
+                        val isImageLimitExceededForAiCore =
+                          modelManagerUiState.selectedModel.runtimeType == RuntimeType.AICORE &&
+                            (imageCount + pickedImages.size) >= MAX_IMAGE_COUNT_AI_CORE
+                        val enableAddImageMenuItems =
+                          (imageCount + pickedImages.size) < MAX_IMAGE_COUNT
+                        val isImageSupported = modelManagerUiState.selectedModel.llmSupportImage
+                        val imageItemColors =
+                          MenuDefaults.itemColors(
+                            textColor =
+                              if (isImageSupported) Color.Unspecified
+                              else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                            leadingIconColor =
+                              if (isImageSupported) Color.Unspecified
+                              else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                          )
+
+                        // Take a picture.
+                        DropdownMenuItem(
+                          text = {
+                            Row(
+                              verticalAlignment = Alignment.CenterVertically,
+                              horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                              Icon(Icons.Rounded.PhotoCamera, contentDescription = null)
+                              Text("Take a picture")
+                            }
+                          },
+                          enabled = enableAddImageMenuItems,
+                          colors = imageItemColors,
+                          onClick = {
+                            if (!isImageSupported) {
+                              onModelNotSupportImage()
+                              showAddContentMenu = false
+                              return@DropdownMenuItem
+                            }
+                            if (isImageLimitExceededForAiCore) {
+                              onImageLimitExceeded()
+                              showAddContentMenu = false
+                              return@DropdownMenuItem
+                            }
+                            // Check permission
+                            when (PackageManager.PERMISSION_GRANTED) {
+                              // Already got permission. Call the lambda.
+                              ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.CAMERA,
+                              ) -> {
+                                showAddContentMenu = false
+                                showCameraCaptureBottomSheet = true
+                              }
+
+                              // Otherwise, ask for permission
+                              else -> {
+                                takePicturePermissionLauncher.launch(Manifest.permission.CAMERA)
+                              }
+                            }
+                          },
+                        )
+
+                        // Pick an image from album.
+                        DropdownMenuItem(
+                          text = {
+                            Row(
+                              verticalAlignment = Alignment.CenterVertically,
+                              horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                              Icon(Icons.Rounded.Photo, contentDescription = null)
+                              Text("Pick from album")
+                            }
+                          },
+                          enabled = enableAddImageMenuItems,
+                          colors = imageItemColors,
+                          onClick = {
+                            if (!isImageSupported) {
+                              onModelNotSupportImage()
+                              showAddContentMenu = false
+                              return@DropdownMenuItem
+                            }
+                            if (isImageLimitExceededForAiCore) {
+                              onImageLimitExceeded()
+                              showAddContentMenu = false
+                              return@DropdownMenuItem
+                            }
+                            // Launch the photo picker and let the user choose only images.
+                            pickMedia.launch(
+                              PickVisualMediaRequest(
+                                ActivityResultContracts.PickVisualMedia.ImageOnly
+                              )
+                            )
+                            showAddContentMenu = false
+                          },
+                        )
+                      }
+
+                      // Audio related menu items.
+                      if (showAudioPicker) {
+                        val enableRecordAudioClipMenuItems =
+                          (audioClipMessageCount + pickedAudioClips.size) < MAX_AUDIO_CLIP_COUNT
+                        val isAudioSupported = modelManagerUiState.selectedModel.llmSupportAudio
+                        val audioItemColors =
+                          MenuDefaults.itemColors(
+                            textColor =
+                              if (isAudioSupported) Color.Unspecified
+                              else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                            leadingIconColor =
+                              if (isAudioSupported) Color.Unspecified
+                              else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                          )
+                        DropdownMenuItem(
+                          text = {
+                            Row(
+                              verticalAlignment = Alignment.CenterVertically,
+                              horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                              Icon(Icons.Rounded.Mic, contentDescription = null)
+                              Text("Record audio clip")
+                            }
+                          },
+                          enabled = enableRecordAudioClipMenuItems,
+                          colors = audioItemColors,
+                          onClick = {
+                            if (!isAudioSupported) {
+                              onModelNotSupportAudio()
+                              showAddContentMenu = false
+                              return@DropdownMenuItem
+                            }
+                            // Check permission
+                            when (PackageManager.PERMISSION_GRANTED) {
+                              // Already got permission. Call the lambda.
+                              ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.RECORD_AUDIO,
+                              ) -> {
+                                handleClickRecordAudioClip()
+                              }
+
+                              // Otherwise, ask for permission
+                              else -> {
+                                recordAudioClipsPermissionLauncher.launch(
+                                  Manifest.permission.RECORD_AUDIO
+                                )
+                              }
+                            }
+                          },
+                        )
+
+                        DropdownMenuItem(
+                          text = {
+                            Row(
+                              verticalAlignment = Alignment.CenterVertically,
+                              horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                              Icon(Icons.Rounded.AudioFile, contentDescription = null)
+                              Text("Pick wav file")
+                            }
+                          },
+                          enabled = enableRecordAudioClipMenuItems,
+                          colors = audioItemColors,
+                          onClick = {
+                            if (!isAudioSupported) {
+                              onModelNotSupportAudio()
+                              showAddContentMenu = false
+                              return@DropdownMenuItem
+                            }
+                            showAddContentMenu = false
+
+                            // Show file picker.
+                            val intent =
+                              Intent(Intent.ACTION_GET_CONTENT).apply {
+                                addCategory(Intent.CATEGORY_OPENABLE)
+                                type = "audio/*"
+
+                                // Provide a list of more specific MIME types to filter for.
+                                val mimeTypes = arrayOf("audio/wav", "audio/x-wav")
+                                putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes)
+
+                                // Single select.
+                                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
+                                  .addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                                  .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                              }
+                            pickWav.launch(intent)
+                          },
+                        )
+                      }
+
+                      // Prompt history.
+                      DropdownMenuItem(
+                        text = {
+                          Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                          ) {
+                            Icon(Icons.Rounded.History, contentDescription = null)
+                            Text("Input history")
+                          }
+                        },
+                        onClick = {
+                          showAddContentMenu = false
+                          showTextInputHistorySheet = true
+                        },
+                      )
+                    }
+                  }
+
+                  // Skills.
+                  if (showSkillsPicker) {
+                    OutlinedButton(
+                      onClick = onSkillsClicked,
+                      enabled = !inProgress && !isResettingSession && !modelInitializing,
+                      contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    ) {
+                      val skillsLabel = stringResource(R.string.skills)
+                      Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(skillsLabel)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Box(
+                          contentAlignment = Alignment.Center,
+                          modifier =
+                            Modifier.background(
+                                MaterialTheme.colorScheme.surfaceContainer,
+                                shape = CircleShape,
+                              )
+                              .height(18.dp)
+                              .widthIn(min = 18.dp),
+                        ) {
+                          Text(
+                            text = skillCount.toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                          )
+                        }
+                      }
+                    }
+                  }
+
+                  // MCP.
+                  if (showMcpPicker) {
+                    OutlinedButton(
+                      onClick = onMcpClicked,
+                      enabled = !inProgress && !isResettingSession && !modelInitializing,
+                      contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    ) {
+                      val mcpLabel = stringResource(R.string.mcp)
+                      Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(mcpLabel)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Box(
+                          contentAlignment = Alignment.Center,
+                          modifier =
+                            Modifier.background(
+                                MaterialTheme.colorScheme.surfaceContainer,
+                                shape = CircleShape,
+                              )
+                              .height(18.dp)
+                              .widthIn(min = 18.dp),
+                        ) {
+                          Text(
+                            text = mcpCount.toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                          )
+                        }
+                      }
+                    }
+                  }
+                }
+
+                // Stop button — available throughout generation, including the
+                // "thinking" phase before the first token (was hidden while
+                // modelPreparing, leaving no way to cancel early).
+                if (inProgress && showStopButtonWhenInProgress) {
+                  if (!modelInitializing) {
+                    IconButton(
+                      onClick = onStopButtonClicked,
+                      colors =
+                        IconButtonDefaults.iconButtonColors(
+                          containerColor = MaterialTheme.colorScheme.secondaryContainer
+                        ),
+                    ) {
+                      Icon(
+                        Icons.Rounded.Stop,
+                        contentDescription = stringResource(R.string.cd_stop_icon),
+                        tint = MaterialTheme.colorScheme.primary,
+                      )
+                    }
+                  }
+                }
+                // Send button.
+                else {
+                  Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Optional leading action (e.g. Notes' Quiz-me button), left of mic/send.
+                    leadingSendAction()
+                    IconButton(
+                      onClick = {
+                        if (voiceUiState.recognizing) {
+                          voiceViewModel.stopSpeechRecognition()
+                        } else {
+                          if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                            handleStartSpeech()
+                          } else {
+                            speechPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                          }
+                        }
+                      },
+                      colors =
+                        IconButtonDefaults.iconButtonColors(
+                          containerColor = if (voiceUiState.recognizing) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.surfaceContainerHighest,
+                        ),
+                    ) {
+                      Icon(
+                        Icons.Rounded.Mic,
+                        contentDescription = "Mic",
+                        tint = if (voiceUiState.recognizing) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                      )
+                    }
+                    IconButton(
+                      enabled =
+                        !inProgress &&
+                          !isResettingSession &&
+                          (curMessage.isNotEmpty() || pickedAudioClips.isNotEmpty() || pickedFiles.isNotEmpty()),
+                      onClick = {
+                        val message = curMessage.trim()
+                        dispatchIntent(
+                          message,
+                          false,
+                          createMessagesToSend(
+                            pickedImages = pickedImages,
+                            pickedFiles = pickedFiles,
+                            audioClips = pickedAudioClips,
+                            text = message,
+                          )
+                        )
+                        updatePickedImages(listOf())
+                        pickedFiles = listOf()
+                        pickedAudioClips = listOf()
+                        onValueChanged("")
+                      },
+                      colors =
+                        IconButtonDefaults.iconButtonColors(
+                          containerColor = getTaskIconColor(task = task),
+                          disabledContainerColor = getTaskIconColor(task = task).copy(alpha = 0.3f),
+                        ),
+                    ) {
+                      Icon(
+                        Icons.AutoMirrored.Rounded.Send,
+                        contentDescription = stringResource(R.string.cd_send_prompt_icon),
+                        modifier = Modifier.offset(x = 2.dp),
+                        tint = Color.White,
+                      )
+                    }
+                  }
+                }
+              }
+            }
+
+          // Audio recorder.
+          true ->
+            AudioRecorderPanel(
+              task = task,
+              onSendAudioClip = { audioData ->
+                scope.launch {
+                  updatePickedAudioClips(
+                    listOf(AudioClip(audioData = audioData, sampleRate = SAMPLE_RATE))
+                  )
+                  audioRecorderSheetState.hide()
+                  showAudioRecorder = false
+                  onSetAudioRecorderVisible(false)
+                }
+              },
+              onAmplitudeChanged = onAmplitudeChanged,
+              onClose = {
+                showAudioRecorder = false
+                onSetAudioRecorderVisible(false)
+              },
+            )
+        }
+      }
+    }
+  }
+
+  // A bottom sheet to show the text input history to pick from.
+  if (showTextInputHistorySheet) {
+    TextInputHistorySheet(
+      history = modelManagerUiState.textInputHistory,
+      onDismissed = { showTextInputHistorySheet = false },
+      onHistoryItemClicked = { item ->
+        onSendMessage(
+          createMessagesToSend(
+            pickedImages = pickedImages,
+            pickedFiles = pickedFiles,
+            audioClips = pickedAudioClips,
+            text = item,
+          )
+        )
+        pickedImages = listOf()
+        pickedFiles = listOf()
+        pickedAudioClips = listOf()
+        modelManagerViewModel.promoteTextInputHistoryItem(item)
+      },
+      onHistoryItemDeleted = { item -> modelManagerViewModel.deleteTextInputHistory(item) },
+      onHistoryItemsDeleteAll = { modelManagerViewModel.clearTextInputHistory() },
+    )
+  }
+
+  if (showCameraCaptureBottomSheet) {
+    ModalBottomSheet(
+      sheetState = cameraCaptureSheetState,
+      onDismissRequest = { showCameraCaptureBottomSheet = false },
+    ) {
+      val lifecycleOwner = LocalLifecycleOwner.current
+      val previewUseCase = remember { androidx.camera.core.Preview.Builder().build() }
+      val imageCaptureUseCase = remember {
+        // Try to limit the image size.
+        val preferredSize = Size(512, 512)
+        val resolutionStrategy =
+          ResolutionStrategy(
+            preferredSize,
+            ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER,
+          )
+        val resolutionSelector =
+          ResolutionSelector.Builder()
+            .setResolutionStrategy(resolutionStrategy)
+            .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+            .build()
+
+        ImageCapture.Builder().setResolutionSelector(resolutionSelector).build()
+      }
+      var cameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
+      var cameraControl by remember { mutableStateOf<CameraControl?>(null) }
+      val localContext = LocalContext.current
+      var cameraSide by remember { mutableIntStateOf(CameraSelector.LENS_FACING_BACK) }
+      val executor = remember { Executors.newSingleThreadExecutor() }
+
+      fun rebindCameraProvider() {
+        cameraProvider?.let { cameraProvider ->
+          val cameraSelector = CameraSelector.Builder().requireLensFacing(cameraSide).build()
+          try {
+            cameraProvider.unbindAll()
+            val camera =
+              cameraProvider.bindToLifecycle(
+                lifecycleOwner = lifecycleOwner,
+                cameraSelector = cameraSelector,
+                previewUseCase,
+                imageCaptureUseCase,
+              )
+            cameraControl = camera.cameraControl
+          } catch (e: Exception) {
+            Log.d(TAG, "Failed to bind camera", e)
+          }
+        }
+      }
+
+      LaunchedEffect(Unit) {
+        cameraProvider = ProcessCameraProvider.awaitInstance(localContext)
+        rebindCameraProvider()
+      }
+
+      LaunchedEffect(cameraSide) { rebindCameraProvider() }
+
+      DisposableEffect(Unit) { // Or key on lifecycleOwner if it makes more sense
+        onDispose {
+          cameraProvider?.unbindAll() // Unbind all use cases from the camera provider
+          if (!executor.isShutdown) {
+            executor.shutdown() // Shut down the executor service
+          }
+        }
+      }
+
+      Box(modifier = Modifier.fillMaxSize()) {
+        // PreviewView for the camera feed.
+        AndroidView(
+          modifier = Modifier.fillMaxSize(),
+          factory = { ctx ->
+            PreviewView(ctx).also {
+              previewUseCase.surfaceProvider = it.surfaceProvider
+              rebindCameraProvider()
+            }
+          },
+        )
+
+        // Close button.
+        IconButton(
+          onClick = {
+            scope.launch {
+              cameraCaptureSheetState.hide()
+              showCameraCaptureBottomSheet = false
+            }
+          },
+          colors =
+            IconButtonDefaults.iconButtonColors(
+              containerColor = MaterialTheme.colorScheme.surfaceVariant
+            ),
+          modifier = Modifier.offset(x = (-8).dp, y = 8.dp).align(Alignment.TopEnd),
+        ) {
+          Icon(
+            Icons.Rounded.Close,
+            contentDescription = stringResource(R.string.cd_close_icon),
+            tint = MaterialTheme.colorScheme.primary,
+          )
+        }
+
+        // Button that triggers the image capture process
+        IconButton(
+          colors =
+            IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.primary),
+          modifier =
+            Modifier.align(Alignment.BottomCenter)
+              .padding(bottom = 32.dp)
+              .size(size = 64.dp)
+              .border(width = 2.dp, color = MaterialTheme.colorScheme.onPrimary, CircleShape),
+          onClick = {
+            val callback =
+              object : ImageCapture.OnImageCapturedCallback() {
+                override fun onCaptureSuccess(image: ImageProxy) {
+                  try {
+                    var bitmap = image.toBitmap()
+                    val rotation = sensorObserver.currentRotation + image.imageInfo.rotationDegrees
+                    bitmap =
+                      if (rotation != 0) {
+                        val matrix = Matrix().apply { postRotate(rotation.toFloat()) }
+                        Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+                      } else bitmap
+                    bitmap = resizeBitmap(originalBitmap = bitmap)
+                    updatePickedImages(listOf(bitmap))
+                  } catch (e: Exception) {
+                    Log.e(TAG, "Failed to process image", e)
+                  } finally {
+                    image.close()
+                    scope.launch {
+                      cameraCaptureSheetState.hide()
+                      showCameraCaptureBottomSheet = false
+                    }
+                  }
+                }
+              }
+            imageCaptureUseCase.takePicture(executor, callback)
+          },
+        ) {
+          Icon(
+            Icons.Rounded.PhotoCamera,
+            contentDescription = stringResource(R.string.cd_camera_shutter_icon),
+            tint = MaterialTheme.colorScheme.onPrimary,
+            modifier = Modifier.size(36.dp),
+          )
+        }
+
+        // Button that toggles the front and back camera.
+        if (hasFrontCamera) {
+          IconButton(
+            colors =
+              IconButtonDefaults.iconButtonColors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer
+              ),
+            modifier =
+              Modifier.align(Alignment.BottomEnd).padding(bottom = 40.dp, end = 32.dp).size(48.dp),
+            onClick = {
+              cameraSide =
+                when (cameraSide) {
+                  CameraSelector.LENS_FACING_BACK -> CameraSelector.LENS_FACING_FRONT
+                  else -> CameraSelector.LENS_FACING_BACK
+                }
+            },
+          ) {
+            Icon(
+              Icons.Rounded.FlipCameraAndroid,
+              contentDescription = stringResource(R.string.cd_toggle_front_back_camera_icon),
+              tint = MaterialTheme.colorScheme.onSecondaryContainer,
+              modifier = Modifier.size(24.dp),
+            )
+          }
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun MediaPanelCloseButton(onClicked: () -> Unit) {
+  Box(
+    modifier =
+      Modifier.offset(x = 10.dp, y = (-10).dp)
+        .clip(CircleShape)
+        .background(MaterialTheme.colorScheme.surface)
+        .border((1.5).dp, MaterialTheme.colorScheme.outline, CircleShape)
+        .clickable { onClicked() }
+  ) {
+    Icon(
+      Icons.Rounded.Close,
+      contentDescription = stringResource(R.string.cd_delete_icon),
+      modifier = Modifier.padding(3.dp).size(16.dp),
+    )
+  }
+}
+
+private fun handleImagesSelected(
+  context: Context,
+  uris: List<Uri>,
+  onImagesSelected: (List<Bitmap>) -> Unit,
+) {
+  val images: MutableList<Bitmap> = mutableListOf()
+  for (uri in uris) {
+    val bitmap: Bitmap? =
+      try {
+        val inputStream =
+          if (uri.scheme == null || uri.scheme == "file") {
+            FileInputStream(uri.path ?: "")
+          } else {
+            context.contentResolver.openInputStream(uri)
+          }
+        if (inputStream != null) {
+          // Read the EXIF metadata from the picture and rotate it correctly.
+          val exif = ExifInterface(inputStream)
+          val orientation =
+            exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+          // You MUST close the first input stream before opening another one on the same URI.
+          inputStream.close()
+
+          // The let block will now return the rotated bitmap
+          decodeSampledBitmapFromUri(context, uri, 1024, 1024)?.let { originalBitmap ->
+            rotateBitmap(bitmap = originalBitmap, orientation = orientation)
+          }
+        } else {
+          null
+        }
+      } catch (e: Exception) {
+        e.printStackTrace()
+        null
+      }
+    if (bitmap != null) {
+      images.add(bitmap)
+    }
+  }
+  if (images.isNotEmpty()) {
+    onImagesSelected(images)
+  }
+}
+
+private fun handleAudioWavSelected(
+  context: Context,
+  uri: Uri,
+  onAudioSelected: (AudioClip) -> Unit,
+) {
+  convertWavToMonoWithMaxSeconds(context = context, stereoUri = uri)?.let { audioClip ->
+    onAudioSelected(audioClip)
+  }
+}
+
+/**
+ * Resizes a given Bitmap to fit within a square of a specified size, while maintaining its original
+ * aspect ratio.
+ */
+private fun resizeBitmap(originalBitmap: Bitmap, size: Int = 1024): Bitmap {
+  val originalWidth = originalBitmap.width
+  val originalHeight = originalBitmap.height
+
+  // Return the original bitmap if it's already within the specified size.
+  if (originalWidth <= size && originalHeight <= size) {
+    return originalBitmap
+  }
+
+  val aspectRatio: Float = originalWidth.toFloat() / originalHeight.toFloat()
+  val newWidth: Int
+  val newHeight: Int
+
+  if (aspectRatio > 1) {
+    // Landscape or square orientation
+    newWidth = size
+    newHeight = (size / aspectRatio).toInt()
+  } else {
+    // Portrait orientation
+    newHeight = size
+    newWidth = (size * aspectRatio).toInt()
+  }
+
+  Log.d(TAG, "Resizing image from $originalWidth x $originalHeight to $newWidth x $newHeight")
+
+  // Create a new scaled bitmap using the calculated dimensions
+  return originalBitmap.scale(newWidth, newHeight)
+}
+
+private fun checkFrontCamera(context: Context, callback: (Boolean) -> Unit) {
+  val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+  cameraProviderFuture.addListener(
+    {
+      val cameraProvider = cameraProviderFuture.get()
+      try {
+        // Attempt to select the default front camera
+        val hasFront = cameraProvider.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA)
+        callback(hasFront)
+      } catch (e: Exception) {
+        e.printStackTrace()
+        callback(false)
+      }
+    },
+    ContextCompat.getMainExecutor(context),
+  )
+}
+
+private fun createMessagesToSend(
+  pickedImages: List<Bitmap>,
+  pickedFiles: List<Pair<android.net.Uri, String>> = listOf(),
+  audioClips: List<AudioClip>,
+  text: String,
+): List<ChatMessage> {
+  val messages: MutableList<ChatMessage> = mutableListOf()
+
+  // Add image message.
+  if (pickedImages.isNotEmpty()) {
+    // Cap the number of image messages.
+    var curPickedImages = pickedImages.toList()
+    if (curPickedImages.size > MAX_IMAGE_COUNT) {
+      curPickedImages = curPickedImages.subList(fromIndex = 0, toIndex = MAX_IMAGE_COUNT)
+    }
+    messages.add(
+      ChatMessageImage(
+        bitmaps = curPickedImages,
+        imageBitMaps = curPickedImages.map { it.asImageBitmap() },
+        side = ChatSide.USER,
+      )
+    )
+  }
+
+  if (pickedFiles.isNotEmpty()) {
+    messages.add(
+      ChatMessageFile(
+        uris = pickedFiles.map { it.first },
+        extractedText = pickedFiles.joinToString("\n\n") { it.second },
+        side = ChatSide.USER,
+      )
+    )
+  }
+
+  // Add audio messages.
+  var audioMessages: MutableList<ChatMessageAudioClip> = mutableListOf()
+  if (audioClips.isNotEmpty()) {
+    for (audioClip in audioClips) {
+      audioMessages.add(
+        ChatMessageAudioClip(
+          audioData = audioClip.audioData,
+          sampleRate = audioClip.sampleRate,
+          side = ChatSide.USER,
+        )
+      )
+    }
+  }
+  // Cap the number of audio messages.
+  if (audioMessages.size > MAX_AUDIO_CLIP_COUNT) {
+    audioMessages = audioMessages.subList(fromIndex = 0, toIndex = MAX_AUDIO_CLIP_COUNT)
+  }
+  messages.addAll(audioMessages)
+
+  if (text.isNotEmpty()) {
+    messages.add(ChatMessageText(content = text, side = ChatSide.USER))
+  }
+
+  return messages
+}
+
+/**
+ * A private class that acts as a LifecycleObserver to monitor sensor events for a device's
+ * orientation, specifically using the accelerometer.
+ *
+ * This observer registers for accelerometer events in `onResume` and unregisters in `onPause` to
+ * conserve battery and resources. It calculates the device's rotation (0, 90, 180, -90) by checking
+ * if the acceleration on the X or Y axis exceeds a threshold of 7.0 m/s^2, which corresponds to
+ * gravity's pull when the device is held in a cardinal direction. A 'dead zone' is used to prevent
+ * the rotation from "chattering" when the device is held at an angle between the cardinal
+ * directions.
+ */
+private class SensorObserver(context: Context) : DefaultLifecycleObserver, SensorEventListener {
+  private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+  private val accelerometer: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+
+  var currentRotation = 0
+
+  override fun onResume(owner: LifecycleOwner) {
+    super.onResume(owner)
+    accelerometer?.let {
+      sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
+    }
+  }
+
+  override fun onPause(owner: LifecycleOwner) {
+    super.onPause(owner)
+    sensorManager.unregisterListener(this)
+  }
+
+  override fun onSensorChanged(event: SensorEvent?) {
+    if (event?.sensor?.type == Sensor.TYPE_ACCELEROMETER) {
+      val x = event.values[0]
+      val y = event.values[1]
+
+      // When the phone is on its side, gravity acts primarily along the x-axis.
+      // When the phone is upright, gravity acts primarily along the y-axis.
+      val newOrientation =
+        when {
+          x < -7.0 -> 90
+          x > 7.0 -> -90
+          y < -7.0 -> 180
+          y > 7.0 -> 0
+          else -> currentRotation // Keep the last known orientation
+        }
+
+      if (newOrientation != currentRotation) {
+        currentRotation = newOrientation
+      }
+    }
+  }
+
+  override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+}
+
+/**
+ * Runs the file-fetch lookup with a hard timeout and full exception guard, so a
+ * hung or throwing Pass-2 (semantic vision) lookup can never leave the user with
+ * no feedback at all. Returns null on timeout/failure (the caller then shows a
+ * "Could not find" toast). Must be called off the main thread.
+ */
+internal suspend fun safeFindFile(
+  context: android.content.Context,
+  query: String,
+  documentTreeUri: String,
+): com.trace.app.filefetch.FileResult? =
+  try {
+    kotlinx.coroutines.withTimeout(30_000) {
+      com.trace.app.filefetch.DefaultIntentFileFetchHandler(context, documentTreeUri)
+        .handleFindFile(query)
+    }
+  } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+    android.util.Log.e("TraceFileFetch", "handleFindFile timed out for \"$query\"", e)
+    null
+  } catch (e: Exception) {
+    android.util.Log.e("TraceFileFetch", "handleFindFile failed for \"$query\"", e)
+    null
+  }

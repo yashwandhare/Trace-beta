@@ -1,0 +1,698 @@
+/*
+ * Copyright 2025 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.trace.app.ui.common.chat
+
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.graphics.Bitmap
+import android.util.Log
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.VisibilityThreshold
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ThumbDown
+import androidx.compose.material.icons.filled.ThumbUp
+import androidx.compose.material.icons.outlined.ThumbDown
+import androidx.compose.material.icons.outlined.ThumbUp
+import androidx.compose.material.icons.outlined.Timer
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.dimensionResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.trace.app.R
+import com.trace.app.data.BuiltInTaskId
+import com.trace.app.data.Model
+import com.trace.app.data.Task
+import com.trace.app.ui.common.AudioAnimation
+import com.trace.app.ui.common.ErrorDialog
+import com.trace.app.ui.common.FloatingBanner
+import com.trace.app.ui.common.RotationalLoader
+import com.trace.app.ui.common.ScrollToBottomButton
+import com.trace.app.ui.modelmanager.ModelInitializationStatusType
+import com.trace.app.ui.modelmanager.ModelManagerViewModel
+import com.trace.app.ui.theme.customColors
+import kotlinx.coroutines.android.awaitFrame
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
+
+private const val TAG = "AGChatPanel"
+private const val SCROLL_ANIMATION_DURATION_MS = 300
+
+/** Composable function for the main chat panel, displaying messages and handling user input. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ChatPanel(
+  modelManagerViewModel: ModelManagerViewModel,
+  task: Task,
+  selectedModel: Model,
+  viewModel: ChatViewModel,
+  innerPadding: PaddingValues,
+  modifier: Modifier = Modifier,
+  skillCount: Int = 0,
+  mcpCount: Int = 0,
+  onSendMessage: (Model, List<ChatMessage>) -> Unit,
+  onRunAgainClicked: (Model, ChatMessage) -> Unit,
+  onBenchmarkClicked: (Model, ChatMessage, warmUpIterations: Int, benchmarkIterations: Int) -> Unit,
+  navigateUp: () -> Unit,
+  onStreamImageMessage: (Model, ChatMessageImage) -> Unit = { _, _ -> },
+  onStreamEnd: (Int) -> Unit = {},
+  onStopButtonClicked: () -> Unit = {},
+  onSkillClicked: () -> Unit = {},
+  onMcpClicked: () -> Unit = {},
+  onImageSelected: (bitmaps: List<Bitmap>, selectedBitmapIndex: Int) -> Unit = { _, _ -> },
+  showStopButtonInInputWhenInProgress: Boolean = false,
+  showImagePicker: Boolean = false,
+  showAttachDocument: Boolean = false,
+  showAudioPicker: Boolean = false,
+  voiceButton: @Composable () -> Unit = {},
+  leadingSendAction: @Composable () -> Unit = {},
+  emptyStateComposable: @Composable (Model) -> Unit = {},
+  // Voice (PTT) messages use this callback; defaults to onSendMessage.
+  onSendVoiceMessage: (Model, List<ChatMessage>) -> Unit = onSendMessage,
+) {
+  val uiState by viewModel.uiState.collectAsState()
+  val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
+  val messages = uiState.messagesByModel[selectedModel.name] ?: listOf()
+  val modelInitializationStatus = modelManagerUiState.modelInitializationStatus[selectedModel.name]
+  val scope = rememberCoroutineScope()
+  val snackbarHostState = remember { SnackbarHostState() }
+  val context = LocalContext.current
+  val clipboard =
+    remember(context) { context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager }
+  val copyToClipboard: (String) -> Unit =
+    remember(clipboard) {
+      { text -> clipboard.setPrimaryClip(ClipData.newPlainText("message", text)) }
+    }
+  val imageCountToLastConfigChange =
+    remember(messages) {
+      var imageCount = 0
+      for (message in messages.reversed()) {
+        if (message is ChatMessageConfigValuesChange) {
+          break
+        }
+        if (message is ChatMessageImage) {
+          imageCount += message.bitmaps.size
+        }
+      }
+      imageCount
+    }
+  val audioClipMesssageCountToLastconfigChange =
+    remember(messages) {
+      var audioClipMessageCount = 0
+      for (message in messages.reversed()) {
+        if (message is ChatMessageConfigValuesChange) {
+          break
+        }
+        if (message is ChatMessageAudioClip) {
+          audioClipMessageCount++
+        }
+      }
+      audioClipMessageCount
+    }
+
+  var curMessage by remember { mutableStateOf("") }
+  val focusManager = LocalFocusManager.current
+
+  // LazyListState — enables virtualised (off-screen items not composed) rendering.
+  val listState = rememberLazyListState()
+  val density = LocalDensity.current
+
+
+
+  var showErrorDialog by remember { mutableStateOf(false) }
+  var customErrorMessage by remember { mutableStateOf<String?>(null) }
+  var showFeedbackDialog by remember { mutableStateOf(false) }
+  var isPositiveFeedback by remember { mutableStateOf(true) }
+  var feedbackMessageIndex by remember { mutableIntStateOf(-1) }
+
+  var showAudioRecorder by remember { mutableStateOf(false) }
+  var curAmplitude by remember { mutableIntStateOf(0) }
+  var pickedImagesCount by remember { mutableIntStateOf(0) }
+  var pickedAudioClipsCount by remember { mutableIntStateOf(0) }
+
+  var showImageLimitBanner by remember { mutableStateOf(false) }
+
+  // Turn messages into a derived state to trigger updates when the list is updated.
+  val currentMessages by rememberUpdatedState(messages)
+
+  // Stores if the list is at the scrollable area's bottom.
+  var isAtBottom by remember { mutableStateOf(true) }
+  LaunchedEffect(listState) {
+    snapshotFlow { 
+      val total = listState.layoutInfo.totalItemsCount
+      total == 0 || listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index == total - 1 
+    }
+      .collectLatest { rawAtBottom ->
+        if (!rawAtBottom) delay(500)
+        isAtBottom = rawAtBottom
+      }
+  }
+
+  // Stores the index of the last user message as a derived state.
+  val lastUserMessageIndex by
+    remember(currentMessages) {
+      derivedStateOf {
+        currentMessages.indexOfLast { it is ChatMessageText && it.side == ChatSide.USER }
+      }
+    }
+
+
+  // Nested scroll connection to handle scrolling behavior.
+  val nestedScrollConnection = remember {
+    object : NestedScrollConnection {
+      override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+        // If downward scroll, clear the focus from any currently focused composable.
+        // This is useful for dismissing software keyboards or hiding text input fields
+        // when the user starts scrolling down a list.
+        if (available.y > 0) {
+          focusManager.clearFocus()
+        }
+        // Let LazyColumn handle the scroll
+        return Offset.Zero
+      }
+    }
+  }
+
+  // Show the image limit banner for 3 seconds.
+  LaunchedEffect(showImageLimitBanner) {
+    if (showImageLimitBanner) {
+      delay(3000) // 3 seconds
+      showImageLimitBanner = false
+    }
+  }
+
+  // Show the error dialog when the model initialization status is error.
+  LaunchedEffect(modelInitializationStatus) {
+    showErrorDialog = modelInitializationStatus?.status == ModelInitializationStatusType.ERROR
+  }
+
+  // Scroll to bottom when a new user message arrives.
+  LaunchedEffect(lastUserMessageIndex) {
+    if (lastUserMessageIndex != -1) {
+      awaitFrame()
+      scrollToBottom(listState = listState, animate = true)
+    }
+  }
+
+  Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+    // Audio record animation.
+    AnimatedVisibility(
+      showAudioRecorder,
+      enter =
+        slideInVertically(
+          animationSpec =
+            spring(
+              stiffness = Spring.StiffnessLow,
+              visibilityThreshold = IntOffset.VisibilityThreshold,
+            )
+        ) { it } + fadeIn(animationSpec = spring(stiffness = Spring.StiffnessLow)),
+      exit = fadeOut(),
+      modifier = Modifier.graphicsLayer { alpha = 0.8f },
+    ) {
+      AudioAnimation(bgColor = MaterialTheme.colorScheme.surface, amplitude = curAmplitude)
+    }
+
+    Column(
+      modifier = modifier.padding(innerPadding).consumeWindowInsets(innerPadding).imePadding()
+    ) {
+      Box(
+        contentAlignment = Alignment.BottomCenter,
+        modifier = Modifier.weight(1f),
+      ) {
+        val cdChatPanel = stringResource(R.string.cd_chat_panel)
+        // Hoisted out of itemsIndexed: these depend only on task.id, so computing them
+        // per-row on every recomposition was wasted work. Remembered per task.
+        val customColors = MaterialTheme.customColors
+        // Cohesive scheme: every module's user bubble uses the single accent color.
+        val userBubbleColor = customColors.userBubbleBgColor
+        val agentBubbleColor = customColors.agentBubbleBgColor
+        // LazyColumn only composes visible items — eliminates the O(n) layout cost
+        // of the previous Column+verticalScroll approach for long chat sessions.
+        LazyColumn(
+          state = listState,
+          modifier =
+            Modifier.fillMaxSize()
+              .nestedScroll(nestedScrollConnection)
+              .semantics { contentDescription = cdChatPanel },
+          verticalArrangement = Arrangement.Top,
+        ) {
+          itemsIndexed(messages, key = { index, _ -> index }) { index, message ->
+            val imageHistoryCurIndex = remember { mutableIntStateOf(0) }
+            var hAlign: Alignment.Horizontal = Alignment.End
+            var backgroundColor: Color = userBubbleColor
+            var hardCornerAtLeftOrRight = false
+            var extraPaddingStart = 48.dp
+            var extraPaddingEnd = 0.dp
+            if (message.side == ChatSide.AGENT) {
+              hAlign = Alignment.Start
+              backgroundColor = agentBubbleColor
+              hardCornerAtLeftOrRight = true
+              extraPaddingStart = 0.dp
+              if (
+                message.type !== ChatMessageType.LOADING &&
+                  message.type !== ChatMessageType.WEBVIEW &&
+                  message.type !== ChatMessageType.COLLAPSABLE_PROGRESS_PANEL
+              ) {
+                extraPaddingEnd = 48.dp
+              }
+              if (message.type == ChatMessageType.TEXT) {
+                extraPaddingStart = 0.dp
+                extraPaddingEnd = 0.dp
+              }
+            } else if (message.side == ChatSide.SYSTEM) {
+              extraPaddingStart = 24.dp
+              extraPaddingEnd = 24.dp
+              if (message.type == ChatMessageType.PROMPT_TEMPLATES) {
+                extraPaddingStart = 12.dp
+                extraPaddingEnd = 12.dp
+              }
+            }
+            if (message.type == ChatMessageType.IMAGE) {
+              backgroundColor = Color.Transparent
+            }
+            val bubbleBorderRadius = dimensionResource(R.dimen.chat_bubble_corner_radius)
+
+            Column(
+              modifier =
+                Modifier.fillMaxWidth()
+                  .padding(
+                    start = 16.dp + extraPaddingStart,
+                    end = 12.dp + extraPaddingEnd,
+                    top = 6.dp,
+                    bottom = 6.dp,
+                  ),
+              horizontalAlignment = hAlign,
+            ) messageColumn@{
+              // Sender row.
+              var agentName = stringResource(task.agentNameRes)
+              if (message.accelerator.isNotEmpty()) {
+                agentName = "$agentName on ${message.accelerator}"
+              }
+              if (!message.hideSenderLabel) {
+                MessageSender(
+                  message = message,
+                  agentName = agentName,
+                  imageHistoryCurIndex = imageHistoryCurIndex.intValue,
+                )
+              }
+
+              // Message body.
+              when (message) {
+                // Loading.
+                is ChatMessageLoading -> MessageBodyLoading(message = message)
+
+                // Info.
+                is ChatMessageInfo -> MessageBodyInfo(message = message)
+
+                // Warning
+                is ChatMessageWarning -> MessageBodyWarning(message = message)
+
+                // Error
+                is ChatMessageError -> MessageBodyError(message = message)
+
+                // Config values change.
+                is ChatMessageConfigValuesChange -> MessageBodyConfigUpdate(message = message)
+
+                // Prompt templates.
+                is ChatMessagePromptTemplates ->
+                  MessageBodyPromptTemplates(
+                    message = message,
+                    task = task,
+                    onPromptClicked = { template ->
+                      onSendMessage(
+                        selectedModel,
+                        listOf(ChatMessageText(content = template.prompt, side = ChatSide.USER)),
+                      )
+                    },
+                  )
+
+                // Non-system messages.
+                else -> {
+                  // The bubble shape around the message body.
+                  var messageBubbleModifier: Modifier = Modifier
+                  // No bubble shape for agent response text messages.
+                  val isAgentResponseText =
+                    message.type == ChatMessageType.TEXT && message.side == ChatSide.AGENT
+                  if (!message.disableBubbleShape && !isAgentResponseText) {
+                    // Use a rounded rectangle clip for multi-image image message.
+                    if (message is ChatMessageImage && message.bitmaps.size > 1) {
+                      messageBubbleModifier = messageBubbleModifier.clip(RoundedCornerShape(6.dp))
+                    }
+                    // For other messages, use a bubble shape to clip.
+                    else {
+                      messageBubbleModifier =
+                        messageBubbleModifier.clip(
+                          MessageBubbleShape(
+                            radius = bubbleBorderRadius,
+                            hardCornerAtLeftOrRight = hardCornerAtLeftOrRight,
+                          )
+                        )
+                    }
+                    messageBubbleModifier = messageBubbleModifier.background(backgroundColor)
+                  }
+                  Box(modifier = messageBubbleModifier) {
+                    when (message) {
+                      // Text
+                      is ChatMessageText ->
+                        MessageBodyText(
+                          message = message,
+                          inProgress = uiState.inProgress,
+                          horizontalPadding =
+                            if (isAgentResponseText) {
+                              0.dp
+                            } else {
+                              12.dp
+                            },
+                          onCopyClicked = copyToClipboard,
+                        )
+
+                      // Image
+                      is ChatMessageImage -> {
+                        MessageBodyImage(message = message, onImageClicked = onImageSelected)
+                      }
+
+                      // Audio clip.
+                      is ChatMessageAudioClip -> MessageBodyAudioClip(message = message)
+
+                      // File.
+                      is ChatMessageFile -> MessageBodyFile(message = message)
+
+                      // Benchmark result.
+                      is ChatMessageBenchmarkResult -> MessageBodyBenchmark(message = message)
+
+                      // Benchmark LLM result.
+                      is ChatMessageBenchmarkLlmResult ->
+                        MessageBodyBenchmarkLlm(
+                          message = message,
+                          modifier = Modifier.wrapContentWidth(),
+                        )
+
+                      // Webview.
+                      is ChatMessageWebView -> MessageBodyWebview(message = message)
+
+                      // Collapsable progress panel.
+                      is ChatMessageCollapsableProgressPanel ->
+                        MessageBodyCollapsableProgressPanel(message = message)
+
+                      // Thinking
+                      is ChatMessageThinking ->
+                        MessageBodyThinking(
+                          thinkingText = message.content,
+                          inProgress = message.inProgress,
+                          onCopyClicked = copyToClipboard,
+                        )
+
+                      else -> {}
+                    }
+                  }
+
+                  if (message.side == ChatSide.AGENT) {
+                    Row(
+                      verticalAlignment = Alignment.CenterVertically,
+                      horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                      LatencyText(message = message)
+                      if (message is ChatMessageText && !uiState.inProgress) {
+                        IconButton(
+                          onClick = { copyToClipboard(message.content) },
+                          modifier = Modifier.size(28.dp),
+                        ) {
+                          Icon(
+                            imageVector = Icons.Rounded.ContentCopy,
+                            contentDescription = stringResource(R.string.copy),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(18.dp),
+                          )
+                        }
+                      }
+                    }
+                  } else if (message.side == ChatSide.USER) {
+                    Row(
+                      verticalAlignment = Alignment.CenterVertically,
+                      horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                      // Run again button.
+                      if (selectedModel.showRunAgainButton) {
+                        MessageActionButton(
+                          label = stringResource(R.string.run_again),
+                          icon = Icons.Rounded.Refresh,
+                          onClick = { onRunAgainClicked(selectedModel, message) },
+                          enabled = !uiState.inProgress,
+                        )
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        SnackbarHost(hostState = snackbarHostState, modifier = Modifier.padding(vertical = 4.dp))
+
+        // Show empty state.
+        if (messages.isEmpty() && pickedImagesCount == 0 && pickedAudioClipsCount == 0) {
+          emptyStateComposable(selectedModel)
+        }
+        // Loading screen when model is initialized for that first time.
+        val isFirstInitializing =
+          modelInitializationStatus?.status == ModelInitializationStatusType.INITIALIZING &&
+            modelInitializationStatus.isFirstInitialization(selectedModel)
+        Column(
+          horizontalAlignment = Alignment.CenterHorizontally,
+          verticalArrangement = Arrangement.Center,
+        ) {
+          AnimatedVisibility(
+            isFirstInitializing,
+            enter = fadeIn() + scaleIn(initialScale = 0.9f),
+            exit = fadeOut() + scaleOut(targetScale = 0.9f),
+          ) {
+            Box(modifier = Modifier.background(MaterialTheme.colorScheme.surface).fillMaxSize()) {
+              Column(
+                modifier = Modifier.align(Alignment.Center),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+              ) {
+                com.trace.app.ui.common.StarThinkingIndicator(starSize = 22.dp)
+                Text(
+                  stringResource(R.string.aichat_initializing_title),
+                  style =
+                    MaterialTheme.typography.headlineLarge.copy(
+                      fontSize = 24.sp,
+                      fontWeight = FontWeight.Bold,
+                    ),
+                )
+                Text(
+                  stringResource(R.string.aichat_initializing_content),
+                  style = MaterialTheme.typography.bodyMedium,
+                  color = MaterialTheme.colorScheme.onSurfaceVariant,
+                  textAlign = TextAlign.Center,
+                )
+              }
+            }
+          }
+        }
+
+        FloatingBanner(
+          visible = showImageLimitBanner,
+          text = stringResource(R.string.aicore_image_limit_message),
+          modifier =
+            Modifier.align(Alignment.TopCenter).padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+
+        // "Scroll to bottom" button, only shown when the list is not at the bottom.
+        Column(
+          modifier =
+            Modifier.align(alignment = Alignment.BottomCenter)
+              .fillMaxWidth()
+              .padding(bottom = 4.dp),
+          horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+          ScrollToBottomButton(
+            isAtBottom = isAtBottom,
+            onClick = { scope.launch { scrollToBottom(listState, animate = true) } },
+          )
+        }
+      }
+
+      val modelNotSupportImageMsg = stringResource(R.string.model_not_support_image_message)
+      val modelNotSupportAudioMsg = stringResource(R.string.model_not_support_audio_message)
+
+      MessageInputText(
+        task = task,
+        modelManagerViewModel = modelManagerViewModel,
+        curMessage = curMessage,
+        inProgress = uiState.inProgress,
+        isResettingSession = uiState.isResettingSession,
+        modelPreparing = uiState.preparing,
+        imageCount = imageCountToLastConfigChange,
+        audioClipMessageCount = audioClipMesssageCountToLastconfigChange,
+        skillCount = skillCount,
+        mcpCount = mcpCount,
+        modelInitializing =
+          modelInitializationStatus?.status == ModelInitializationStatusType.INITIALIZING,
+        textFieldPlaceHolderRes = task.textInputPlaceHolderRes,
+        onValueChanged = { curMessage = it },
+        onSendMessage = {
+          onSendMessage(selectedModel, it)
+          curMessage = ""
+          // Hide software keyboard.
+          focusManager.clearFocus()
+        },
+        onOpenPromptTemplatesClicked = {
+          onSendMessage(
+            selectedModel,
+            listOf(
+              ChatMessagePromptTemplates(
+                templates = selectedModel.llmPromptTemplates,
+                showMakeYourOwn = false,
+              )
+            ),
+          )
+        },
+        onStopButtonClicked = onStopButtonClicked,
+        onSetAudioRecorderVisible = { start ->
+          showAudioRecorder = start
+          if (!showAudioRecorder) {
+            curAmplitude = 0
+          }
+        },
+        onAmplitudeChanged = { curAmplitude = it },
+        onSkillsClicked = onSkillClicked,
+        onMcpClicked = onMcpClicked,
+        onPickedImagesChanged = { pickedImagesCount = it.size },
+        onPickedAudioClipsChanged = { pickedAudioClipsCount = it.size },
+        showPromptTemplatesInMenu = false,
+        showSkillsPicker = task.id === BuiltInTaskId.LLM_AGENT_CHAT,
+        showMcpPicker = task.id === BuiltInTaskId.LLM_AGENT_CHAT,
+        showImagePicker = showImagePicker,
+        showAttachDocument = showAttachDocument,
+        showAudioPicker = showAudioPicker,
+        voiceButton = voiceButton,
+        leadingSendAction = leadingSendAction,
+        showStopButtonWhenInProgress = showStopButtonInInputWhenInProgress,
+        onImageLimitExceeded = { showImageLimitBanner = true },
+        onModelNotSupportImage = { customErrorMessage = modelNotSupportImageMsg },
+        onModelNotSupportAudio = { customErrorMessage = modelNotSupportAudioMsg },
+        onSendVoiceMessage = {
+          onSendVoiceMessage(selectedModel, it)
+          curMessage = ""
+          focusManager.clearFocus()
+        },
+      )
+    }
+  }
+
+  // Error dialog.
+  if (showErrorDialog || customErrorMessage != null) {
+    ErrorDialog(
+      error = customErrorMessage ?: modelInitializationStatus?.error ?: "",
+      onDismiss = {
+        if (customErrorMessage != null) {
+          customErrorMessage = null
+        } else {
+          showErrorDialog = false
+        }
+      },
+    )
+  }
+
+}
+
+private suspend fun scrollToBottom(
+  listState: androidx.compose.foundation.lazy.LazyListState,
+  animate: Boolean = false,
+  animationDurationMs: Int = SCROLL_ANIMATION_DURATION_MS,
+) {
+  val target = listState.layoutInfo.totalItemsCount - 1
+  if (target < 0) return
+  if (animate) {
+    listState.animateScrollToItem(target)
+  } else {
+    listState.scrollToItem(target)
+  }
+}
