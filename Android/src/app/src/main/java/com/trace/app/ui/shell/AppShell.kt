@@ -43,6 +43,7 @@ import androidx.compose.material.icons.rounded.Event
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.NoteAlt
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Tune
@@ -75,6 +76,8 @@ import com.trace.app.data.ModelDownloadStatusType
 import com.trace.app.data.convertValueToTargetType
 import com.trace.app.ui.common.ConfigDialog
 import com.trace.app.ui.home.SettingsDialog
+import com.trace.app.ui.memory.MemoryScheduleScreen
+import com.trace.app.ui.memory.OrganizerTab
 import com.trace.app.ui.modelmanager.ModelManagerViewModel
 import kotlinx.coroutines.launch
 
@@ -97,8 +100,8 @@ private enum class ShellModule(val taskId: String, val label: String, val descri
  * still opens its history / navigates; the shell drawer is opened from the same
  * left edge. This avoids nesting/suppressing the modules' internal drawers.
  *
- * NOT device-tested — the entry point + inline module switching need on-device
- * iteration (see docs/UI_REDESIGN_HANDOFF.md Phase 3).
+ * The shell is the current tested application entry point. Final polish and
+ * device-specific validation continue at the project level.
  */
 @Composable
 fun AppShell(
@@ -122,6 +125,7 @@ fun AppShell(
   var showSettings by remember { mutableStateOf(false) }
   var showModelSettings by remember { mutableStateOf(false) }
   var showSearchScope by remember { mutableStateOf(false) }
+  var organizerTab by remember { mutableStateOf<OrganizerTab?>(null) }
 
   // Warm the AI Chat model as soon as the app launches, while the user is still
   // on the home screen — so the first send from home is instant instead of
@@ -151,10 +155,12 @@ fun AppShell(
           active = activeModule,
           isHome = onHome,
           onHome = {
+            organizerTab = null
             onHome = true
             scope.launch { drawerState.close() }
           },
           onModuleSelected = { module ->
+            organizerTab = null
             activeModule = module
             onHome = false
             scope.launch { drawerState.close() }
@@ -175,13 +181,29 @@ fun AppShell(
             showSettings = true
             scope.launch { drawerState.close() }
           },
+          onMemory = {
+            organizerTab = OrganizerTab.MEMORY
+            onHome = false
+            scope.launch { drawerState.close() }
+          },
+          onSchedules = {
+            organizerTab = OrganizerTab.SCHEDULES
+            onHome = false
+            scope.launch { drawerState.close() }
+          },
           webSearchEnabled = uiState.webSearchEnabled,
           onToggleWebSearch = { modelManagerViewModel.setWebSearchEnabled(it) },
         )
       }
     },
   ) {
-    if (onHome) {
+    if (organizerTab != null) {
+      androidx.activity.compose.BackHandler(enabled = true) { organizerTab = null; onHome = true }
+      MemoryScheduleScreen(
+        initialTab = organizerTab!!,
+        onBack = { organizerTab = null; onHome = true },
+      )
+    } else if (onHome) {
       ShellHomeScreen(
         modelManagerViewModel = modelManagerViewModel,
         onOpenDrawer = { scope.launch { drawerState.open() } },
@@ -189,9 +211,13 @@ fun AppShell(
           activeModule = module
           onHome = false
         },
-        onSendQuery = { text ->
+          onSendQuery = { text ->
           pendingChatQuery = text
           activeModule = ShellModule.AI_CHAT
+          onHome = false
+        },
+        onOpenOrganizer = { tab ->
+          organizerTab = tab
           onHome = false
         },
       )
@@ -322,17 +348,18 @@ fun AppShell(
   }
 }
 
-/** A tile on the home landing screen. Built-in modules map to a [ShellModule]; placeholders don't. */
+/** A tile on the home landing screen. Built-in modules map to a destination. */
 private data class HomeTile(
   val label: String,
   val icon: ImageVector,
   val module: ShellModule?,
+  val organizerTab: OrganizerTab? = null,
   val comingSoon: Boolean = false,
 )
 
 /**
  * Fresh-launch home landing screen: a hamburger, a greeting, a 2x2 grid of
- * modules (Vision, Notes, plus Schedule/Audio placeholders), and a chat input
+ * modules (Vision, Notes, Schedule, plus an Audio placeholder), and a chat input
  * that launches AI Chat with the typed text.
  */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -341,6 +368,7 @@ private fun ShellHomeScreen(
   modelManagerViewModel: ModelManagerViewModel,
   onOpenDrawer: () -> Unit,
   onModuleClick: (ShellModule) -> Unit,
+  onOpenOrganizer: (OrganizerTab) -> Unit,
   onSendQuery: (String) -> Unit,
 ) {
   var query by remember { mutableStateOf("") }
@@ -403,7 +431,7 @@ private fun ShellHomeScreen(
   val tiles = listOf(
     HomeTile("Vision", Icons.Outlined.PhotoCamera, ShellModule.VISION),
     HomeTile("Notes", Icons.AutoMirrored.Outlined.MenuBook, ShellModule.NOTES),
-    HomeTile("Schedule", Icons.Rounded.Event, null, comingSoon = true),
+    HomeTile("Schedule", Icons.Rounded.Event, null, organizerTab = OrganizerTab.SCHEDULES),
     HomeTile("Audio", Icons.Rounded.Mic, null, comingSoon = true),
   )
 
@@ -450,7 +478,9 @@ private fun ShellHomeScreen(
                 tile = tile,
                 modifier = Modifier.weight(1f),
                 onClick = {
-                  if (tile.comingSoon) {
+                  if (tile.organizerTab != null) {
+                    onOpenOrganizer(tile.organizerTab)
+                  } else if (tile.comingSoon) {
                     android.widget.Toast.makeText(context, "${tile.label} — coming soon", android.widget.Toast.LENGTH_SHORT).show()
                   } else tile.module?.let(onModuleClick)
                 },
@@ -624,6 +654,8 @@ private fun AppDrawerContent(
   onModelSettings: () -> Unit,
   onSearchScope: () -> Unit,
   onSettings: () -> Unit,
+  onMemory: () -> Unit,
+  onSchedules: () -> Unit,
   webSearchEnabled: Boolean,
   onToggleWebSearch: (Boolean) -> Unit,
 ) {
@@ -649,9 +681,27 @@ private fun AppDrawerContent(
       Spacer(Modifier.height(4.dp))
     }
 
-    // App-wide options live on the home screen only. Inside a module the sidebar
-    // is reserved for that module (its history is reachable from its own top bar).
-    // Settings is global — available on every screen.
+    Spacer(Modifier.height(12.dp))
+    HorizontalDivider()
+    Spacer(Modifier.height(12.dp))
+    DrawerRow(
+      icon = Icons.Rounded.NoteAlt,
+      label = "Memory",
+      description = "Your notes and Trace reminders",
+      selected = false,
+      onClick = onMemory,
+    )
+    Spacer(Modifier.height(4.dp))
+    DrawerRow(
+      icon = Icons.Rounded.Event,
+      label = "Schedules",
+      description = "Manage notification routines",
+      selected = false,
+      onClick = onSchedules,
+    )
+
+    // App-wide model/file options live on the home screen only. Settings is
+    // global and remains available on every screen.
     if (isHome) {
       Spacer(Modifier.height(12.dp))
       HorizontalDivider()

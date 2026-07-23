@@ -1,8 +1,8 @@
 # Trace — To-Do
 
-Current, actionable tasks for **today's sprint**. This mirrors `/ROADMAP.md` phases exactly — if
-something's not listed here for your role, it's not your task yet. Read `/WORKSTREAM.md` for the full
-ownership rules before starting anything.
+Current project checklist. Phases 0 through 4 are complete; the remaining work is final polish,
+validation, demo preparation, and explicitly approved extras. Read `/WORKSTREAM.md` before taking
+ownership of a task.
 
 **Rule for both devs and any agent working on this repo:** work only from this file and `/ROADMAP.md`.
 Do not invent tasks, do not "improve" something outside the current phase, do not touch a file assigned
@@ -13,7 +13,7 @@ Check off items as they're done. Move to the next phase's tasks only after that 
 
 ---
 
-## ACTIVE PHASE: Phase 0a — Strip & Rebrand Baseline
+## COMPLETED: Phase 0a — Strip & Rebrand Baseline
 (Do this before Phase 0. Goal: stable, renamed, single-model, text-only chatbot baseline — no voice,
 no screen capture, no RAG yet.)
 
@@ -141,26 +141,27 @@ no screen capture, no RAG yet.)
 
 ---
 
-## NEXT PHASE: Phase 4 — Memory & Schedules (Modules)
-(Phase 3 gate met. Full detail in `/ROADMAP.md`.)
+## COMPLETED: Phase 4 — Memory & Schedules (Modules)
+(The backend and user-facing Memory/Schedules surfaces are implemented in this checkout. The new
+surfaces still need final device QA and polish on the demo build.)
 
 ### Dev A
-- [ ] Build the Memory structured data store (local database/preferences) for user-authored and system-authored entries
-- [ ] Build the Schedules module backend (AlarmManager / WorkManager, Notification Channels, surviving OS process death)
-- [ ] Wire generation of schedules from scanned Vision prescriptions or attached Chat documents into Memory and the scheduling system
-- [ ] Implement Quiz-from-schedule logic (triggering RAG quiz via AlarmManager)
+- [x] Build the Memory structured data store for user-authored and system-authored entries
+- [x] Build the Schedules backend (AlarmManager, Notification Channels, persistence, boot re-arm, and exact-alarm fallback)
+- [x] Expose reminder generation from scanned Vision prescriptions or attached Chat documents to Memory and the scheduling system
+- [x] Implement Quiz-from-schedule logic (AlarmManager deeplink into RAG)
 
 ### Dev B
-- [ ] Build the Memory sidebar UI (viewing, editing, and adding user-authored and system-authored schedule entries)
-- [ ] Build the Schedules list UI and notification interaction flows
-- [ ] UI polish pass across all screens built so far
+- [x] Build the Memory sidebar UI (viewing, editing, and adding user-authored and system-authored schedule entries)
+- [x] Build the Schedules list UI and notification interaction flows
+- [x] Apply the Phase 4 UI polish pass to the new Memory/Schedules surfaces and their shell entry points
 
 ### Merge checkpoint — same pattern as above.
 
 ---
 
-## LATER: Phase 5 — Integration, Polish, Demo Prep
-(Do not start until Phase 4 gate is confirmed met. Full detail in `/ROADMAP.md`.)
+## REMAINING: Final Polish, QA & Demo Prep
+(This is the project closeout checklist, not a new core product phase.)
 
 ### Dev A
 - [ ] Full integration pass on `main` across all 5 modules
@@ -172,7 +173,9 @@ no screen capture, no RAG yet.)
 - [ ] Full QA checklist run, log bugs for Dev A
 - [ ] Support demo rehearsal
 
-### Merge checkpoint — same pattern as above. This is the sprint's end state.
+### Closeout checkpoint
+- [ ] Merge the final reviewed work into `main`
+- [ ] Build and test the final demo artifact on the Samsung Galaxy M35
 
 ---
 

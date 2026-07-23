@@ -41,10 +41,11 @@ than editing it — this is what prevents merge conflicts entirely, not just res
 
 ### Dev A — Kazuto (critical path)
 - Gemma 4 E2B-IT / LiteRT-LM integration and model lifecycle (load-once, resident-in-memory)
-- Voice pipeline: push-to-talk capture, Gemma native audio path, TTS output
+- Voice pipeline: push-to-talk capture/transcription, TTS output, and interaction-origin handling
 - Intent router (rule-based router logic)
 - MediaProjection screen capture + screen-explain feature end to end
-- Qdrant Edge Rust crate + JNI bridge (highest-risk integration — Dev A only, not delegated)
+- On-device RAG architecture and resident-model integration (the Qdrant Edge/Rust JNI bridge was
+  rejected; the shipped retrieval stack is Kotlin-only)
 - All architectural and product decisions — anything not explicitly assigned to Dev B below
 - Final merges into `main`, integration builds, end-to-end testing
 

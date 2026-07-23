@@ -120,10 +120,33 @@ constructor(@ApplicationContext private val context: Context) {
    * otherwise returns false.
    */
   fun scheduleNotification(notification: ScheduledNotification): Boolean {
+    // A stable id is the schedule's identity (and may also be the linked Memory
+    // entry id). Treat re-scheduling that id as an update instead of creating a
+    // duplicate row/alarm.
+    if (_scheduledNotifications.value.any { it.id == notification.id }) {
+      return updateNotification(notification)
+    }
     if (!setAlarmForNotification(notification)) {
       return false
     }
     _scheduledNotifications.update { it + notification }
+    saveNotifications()
+    return true
+  }
+
+  /** Re-arms and persists an existing notification while preserving its stable id. */
+  fun updateNotification(notification: ScheduledNotification): Boolean {
+    val existing = _scheduledNotifications.value.find { it.id == notification.id }
+      ?: return scheduleNotification(notification)
+    cancelAlarm(existing)
+    if (!setAlarmForNotification(notification)) {
+      // Restore the previous alarm when the replacement could not be armed.
+      setAlarmForNotification(existing)
+      return false
+    }
+    _scheduledNotifications.update { list ->
+      list.map { if (it.id == notification.id) notification else it }
+    }
     saveNotifications()
     return true
   }
@@ -234,25 +257,27 @@ constructor(@ApplicationContext private val context: Context) {
   /** Removes a notification from the schedule and cancels the alarm for the notification. */
   fun removeNotification(id: String) {
     val removed = _scheduledNotifications.value.find { it.id == id }
-    removed?.let {
-      val pendingIntent =
-        NotificationPendingIntentHelper.buildNotificationPendingIntent(
-          context,
-          it.id,
-          it.title,
-          it.message,
-          it.deeplink,
-          it.repeatDaily,
-          it.hour,
-          it.minute,
-          it.channelId,
-          it.channelName,
-        )
-      val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-      alarmManager.cancel(pendingIntent)
-    }
+    removed?.let(::cancelAlarm)
     _scheduledNotifications.update { list -> list.filter { it.id != id } }
     saveNotifications()
+  }
+
+  private fun cancelAlarm(notification: ScheduledNotification) {
+    val pendingIntent =
+      NotificationPendingIntentHelper.buildNotificationPendingIntent(
+        context,
+        notification.id,
+        notification.title,
+        notification.message,
+        notification.deeplink,
+        notification.repeatDaily,
+        notification.hour,
+        notification.minute,
+        notification.channelId,
+        notification.channelName,
+      )
+    val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+    alarmManager.cancel(pendingIntent)
   }
 }
 

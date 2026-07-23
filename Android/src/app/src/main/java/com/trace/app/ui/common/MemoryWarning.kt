@@ -31,42 +31,28 @@ import com.trace.app.data.Model
 private const val TAG = "AGMemoryWarning"
 private const val BYTES_IN_GB = 1024f * 1024 * 1024
 
-/** Composable function to display a memory warning alert dialog. */
 @Composable
 fun MemoryWarningAlert(onProceeded: () -> Unit, onDismissed: () -> Unit) {
   AlertDialog(
     title = { Text(stringResource(R.string.memory_warning_title)) },
     text = { Text(stringResource(R.string.memory_warning_content)) },
     onDismissRequest = onDismissed,
-    confirmButton = {
-      TextButton(onClick = onProceeded) {
-        Text(stringResource(R.string.memory_warning_proceed_anyway))
-      }
-    },
+    confirmButton = { TextButton(onClick = onProceeded) { Text(stringResource(R.string.memory_warning_proceed_anyway)) } },
     dismissButton = { TextButton(onClick = onDismissed) { Text(stringResource(R.string.cancel)) } },
   )
 }
 
-/** Checks if the device's memory is lower than the required minimum for the given model. */
 fun isMemoryLow(context: Context, model: Model): Boolean {
-  val activityManager =
-    context.getSystemService(android.app.Activity.ACTIVITY_SERVICE) as? ActivityManager
+  val activityManager = context.getSystemService(android.app.Activity.ACTIVITY_SERVICE) as? ActivityManager
   val minDeviceMemoryInGb = model.minDeviceMemoryInGb
   return if (activityManager != null && minDeviceMemoryInGb != null) {
     val memoryInfo = ActivityManager.MemoryInfo()
     activityManager.getMemoryInfo(memoryInfo)
     var deviceMemInGb = memoryInfo.totalMem / BYTES_IN_GB
-    // API 34+ uses advertisedMem instead of totalMem for better accuracy.
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
       deviceMemInGb = memoryInfo.advertisedMem / BYTES_IN_GB
     }
-    Log.d(
-      TAG,
-      "Device memory (GB): $deviceMemInGb. " +
-        "Model's required min device memory (GB): $minDeviceMemoryInGb.",
-    )
+    Log.d(TAG, "Device memory (GB): $deviceMemInGb. Model's required min device memory (GB): $minDeviceMemoryInGb.")
     deviceMemInGb < minDeviceMemoryInGb
-  } else {
-    false
-  }
+  } else false
 }

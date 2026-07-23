@@ -55,9 +55,10 @@ Camera-based scan-and-chat, accessible from the homescreen. The user photographs
 **Example:** "What does this nutrition label mean?"
 
 ### P0 — RAG (Module — Phase 3)
-User's notes (photographed or typed) are OCR'd and embedded once, indexed locally in Qdrant Edge. Voice
-commands trigger retrieval over that index, and Gemma generates a quiz, flashcard set, or summary
-grounded in the actual retrieved content.
+User's notes (photographed or typed) are OCR'd and embedded once with the bundled on-device Universal
+Sentence Encoder. A pure-Kotlin cosine store persists the attached-note index locally; voice or text
+commands retrieve relevant chunks and Gemma generates a quiz, flashcard set, or summary grounded in
+that retrieved content.
 
 **Important:** RAG ingestion is strictly via files the user explicitly attaches through AI Chat or selects directly. It NEVER performs a background search of device storage.
 
@@ -98,9 +99,10 @@ A working demo must be able to, live, offline (airplane mode on):
 3. Generate a quiz from the presenter's own real notes and take one question live
 4. (Stretch) Fetch a named file by voice on request
 
-If Qdrant Edge / RAG integration is not working reliably by the pre-hackathon cutoff, the notes feature
-degrades to "summarize this specific note" (direct OCR + Gemma, no retrieval) rather than being cut
-entirely — see `/ROADMAP.md` Phase 4 fallback.
+The Qdrant Edge/JNI path was deliberately rejected as too risky for the hackathon; the pure-Kotlin
+on-device retrieval path is the shipped implementation. If retrieval itself proves unreliable, the
+notes feature degrades to "summarize this specific note" (direct OCR + Gemma, no retrieval) rather
+than being cut entirely.
 
 ## 7. Business Model
 
@@ -115,7 +117,8 @@ Not mass-consumer freemium. Two real paths:
 - **Model stays resident in memory after first load.** Never reload per request (cold load ~90-100s,
   warm ~20-30s per pre-hackathon benchmarks on Exynos 1380 / 6GB RAM class hardware — see
   `/ARCHITECTURE.md`).
-- **No network calls, ever, for any core feature.** This is the entire premise of the product; a single
-  accidental cloud call in the demo undermines the whole pitch.
+- **No network calls for any core feature.** The core demo must work in airplane mode. The sole explicit
+  exception is user-enabled DuckDuckGo web search: it is session-only, off by default, and never
+  required by any product flow.
 - **Responses stay concise by default** (target 1-2 sentences unless expansion is requested) — both a UX
   choice and a hardware necessity at ~9 tok/s decode speed on target devices.

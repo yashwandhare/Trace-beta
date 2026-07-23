@@ -11,6 +11,16 @@ merges `dev-b` into `main` -> Dev A finishes their own tasks on `dev-a` -> Dev A
 Each phase has a **gate** — the thing that must be true before moving on. Do not start the next phase
 until the gate is met.
 
+## Current status — 2026-07-23
+
+The tested demo build runs on the Samsung Galaxy M35 (6 GB RAM, Android 16) with Gemma 4 E2B-IT.
+Phase 3.5 shell/polish and Phase 4 backend and UI implementation are complete in this checkout.
+Remaining work is final device QA, integration validation, demo preparation, and explicitly approved
+extras. The newly added Memory/Schedules surfaces should be exercised on the demo device before the
+closeout push.
+Opt-in web search is an intentional non-core feature: it is session-only and off by default; the
+airplane-mode core demo remains the required path.
+
 ---
 
 ## Phase 0a — Strip & Rebrand Baseline (do this first, before Phase 0)
@@ -133,24 +143,26 @@ confirmed working by Dev A.
 
 ---
 
-## Phase 4 — Memory & Schedules (Modules)
+## Phase 4 — Memory & Schedules (Modules) — COMPLETE
 
 **Dev A:**
-- [ ] Build the Memory structured data store (local database/preferences) with read/write paths for both user-authored and system-authored entries
-- [ ] Build the Schedules module backend (AlarmManager / WorkManager, Notification Channels, surviving OS process death)
-- [ ] Wire generation of schedules from scanned Vision prescriptions or attached Chat documents into the Memory store and scheduling system
-- [ ] Implement Quiz-from-schedule logic (triggering RAG quiz via AlarmManager)
+- [x] Build the Memory structured data store with read/write paths for both user-authored and system-authored entries
+- [x] Build the Schedules backend (AlarmManager, notification channels, persistence, boot re-arm, exact-alarm fallback)
+- [x] Expose generation of schedules from scanned Vision prescriptions or attached Chat documents to the Memory store and scheduling system
+- [x] Implement Quiz-from-schedule logic (triggering RAG quiz via AlarmManager deeplink)
 
 **Dev B:**
-- [ ] Build the Memory sidebar UI (viewing, editing, and adding user-authored and system-authored schedule entries)
-- [ ] Build the Schedules list UI and notification interaction flows
-- [ ] UI polish pass across all screens built so far
+- [x] Build the Memory sidebar UI (viewing, editing, and adding user-authored and system-authored schedule entries)
+- [x] Build the Schedules list UI and notification interaction flows
+- [x] Apply the Phase 4 UI polish pass to the new Memory/Schedules surfaces and their shell entry points
 
-**Gate:** User can add memory entries in sidebar. User can scan a prescription in Vision, ask for a reminder, which populates a schedule in Memory and triggers a reliable Android notification. Merged to `main`.
+**Gate:** Implementation is complete in this checkout. Final device verification remains before the
+closeout push: add memory entries, generate a reminder from Vision or Chat, confirm persistence, and
+confirm the Android notification and quiz deeplink behavior.
 
 ---
 
-## Phase 5 — Integration, Polish, Demo Prep
+## Closeout — Integration, Polish, Demo Prep
 
 **Dev A:**
 - [ ] Full integration pass on `main` across all 5 modules
@@ -162,7 +174,8 @@ confirmed working by Dev A.
 - [ ] Run full QA checklist across every feature, log bugs for Dev A to triage
 - [ ] Support demo rehearsal
 
-**Gate:** All modules work reliably, live, offline, multiple times in a row. This is the end state for today's sprint.
+**Gate:** All modules work reliably, live, offline, multiple times in a row. This is the project's
+closeout state for the hackathon prototype.
 
 ---
 

@@ -46,8 +46,9 @@ tester, and reviewer — not the author of most individual lines. This means:
 ## Code style / stack reminders
 
 - **Kotlin/Jetpack Compose** for all app-shell, UI, and Android-platform code.
-- **Rust** only for the Qdrant Edge integration, bridged via JNI. Do not introduce Rust anywhere else in
-  the codebase without an explicit decision logged in `/DECISIONS.md`.
+- **Kotlin-only app implementation.** The planned Qdrant Edge/Rust JNI bridge was rejected during
+  Phase 3; RAG uses the shipped Kotlin retrieval stack. Do not introduce Rust or JNI without a new
+  explicit decision in `/DECISIONS.md`.
 - Forked from Google AI Edge Gallery — preserve and reuse its existing LiteRT-LM / Gemma loading code
   rather than reimplementing model loading from scratch. Removing UI (model picker, generic chat screen)
   is in scope; rewriting the inference plumbing is not, unless something is actually broken.

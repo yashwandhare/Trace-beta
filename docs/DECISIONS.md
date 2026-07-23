@@ -148,3 +148,10 @@ Three product calls made with the owner while building Phase 3:
 1. **Web search (DuckDuckGo tool-call): REJECTED — keep offline-pure.** Technically feasible without an API key, but it directly violates the `/CONSTRAINTS.md` hard rule ("no network calls, ever, for any core feature") and would send queries — often about sensitive attached documents — to a third party, undermining the product's entire premise. Considered as an off-by-default opt-in "online mode" and still rejected for now. If ever revisited, it requires a new entry here plus the safeguards discussed: off by default, visible online indicator, warning when sensitive attachments are present.
 2. **Knowledge scope toggle: ADDED.** User-facing choice between "My notes only" (strict grounding) and "Notes + AI knowledge" (Gemma may blend its internal knowledge, never contradicting the notes). Both fully offline — this is a prompt-mode switch, not a data source change.
 3. **RAG promoted to a standalone homescreen module ("Notes").** Consistent with `/PRD.md §4` which lists RAG as its own P0 module; AI Chat remains an ingestion point (attachments there share the same app-scoped index via a Hilt singleton `RagEngine`). Citations are built deterministically from the actual retrieved chunks (source + snippet + score), never from model output, so they can't be hallucinated.
+
+### Opt-in web search accepted as a deliberate non-core exception (2026-07-22)
+The earlier rejection above is superseded for the narrow implementation that shipped. DuckDuckGo Lite
+search is intentionally available only after an explicit sidebar toggle; its state is in memory only,
+defaults to off on every launch, and is never used by a core flow. The airplane-mode demo remains fully
+functional without it. This is a convenience capability for non-sensitive, current-information questions,
+not part of Trace's private-content or privacy-first pitch.

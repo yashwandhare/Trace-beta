@@ -210,3 +210,37 @@ Owner brief: make Trace feel first-party, not a fork. Six phases, each build-gre
 - Phase E onboarding (`0626bab`): first-run OnboardingScreen (intro + guided model download w/ progress), gated by a new `has_completed_onboarding` settings flag.
 - Deferred: AI Chat/Vision suggestion prompts beyond Notes, full Notes→MessageInputText swap, dead toml-alias/oss-licenses prune, broad animation pass.
 - Benchmark: `:app:assembleDebug` BUILD SUCCESSFUL. Debug APK ~220MB at repo root (`Trace-debug.apk`).
+
+---
+
+## 2026-07-23 — Project status — Phase 4 UI and final polish
+- Confirmed: the current local `dev-a` checkout, local `main`, `origin/dev-a`, and `origin/main` all
+  resolve to `f7aacdd`. The tested build is the code on `main`.
+- Confirmed by owner: the current build works on the Samsung Galaxy M35 (6 GB RAM, Android 16) with
+  Gemma 4 E2B-IT. Phase 3.5 and the Phase 4 backend are working; this supersedes older handoff notes
+  that marked the shell as not device-tested.
+- Active: Dev C2 owns the remaining Phase 4 user-facing Memory sidebar, Schedules list/notification
+  interactions, and final UI polish. The backend APIs are already present.
+- Product decision: opt-in DuckDuckGo web search is intentional. It remains session-only and off by
+  default; the offline core demo does not depend on it.
+
+## 2026-07-23 — Dev C2 lane — Phase 4 UI implementation
+- Did: Added Memory/Schedules organizer UI reachable from the shell drawer and the home Schedule tile.
+  Memory supports add/edit/delete for user and system entries, source labels, and linked reminder
+  cleanup. Schedules supports listing, cancellation, Notes-quiz deeplink indication, and exact-alarm
+  settings guidance. Added the missing notification update path so editing a linked reminder re-arms
+  the existing alarm without creating duplicates.
+- Broken/open: Not yet device-tested in this session. Existing owner-confirmed device baseline remains
+  the Samsung Galaxy M35 (6 GB RAM, Android 16) with Gemma 4 E2B-IT.
+- Benchmark numbers: `:app:compileDebugKotlin` passed after the UI integration.
+## 2026-07-23 — Roadmap closeout cleanup
+
+- Removed obsolete onboarding, handoff, implementation-reference, and dated screenshot files from
+  `docs/`; kept the core project documents and historical log entries.
+- Removed confirmed-unused Compose/example source files after repository-wide reference checks.
+- Kept shared files that remain reachable from the model-download, home, chat, and webview flows.
+- Updated the roadmap and task list to show Phase 4 implementation complete and final polish/QA/demo
+  work as the remaining closeout scope.
+- `:app:compileDebugKotlin` and `:app:assembleDebug` pass after cleanup. The resulting APK is
+  `Android/src/app/build/outputs/apk/debug/app-debug.apk` (SHA-256:
+  `9a92bca1e550358beaf740a094c0ce364a12bf6b45902889745a075a458b8cc5`).

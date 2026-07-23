@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 
 package com.trace.app
 
@@ -66,9 +66,9 @@ fun GalleryTopAppBar(
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-          if (title == stringResource(R.string.app_name)) {
+          if (title == stringResource(com.trace.app.R.string.app_name)) {
             Icon(
-              painterResource(R.drawable.logo),
+              painterResource(com.trace.app.R.drawable.logo),
               modifier = Modifier.size(20.dp),
               contentDescription = null,
               tint = Color.Unspecified,
@@ -79,63 +79,33 @@ fun GalleryTopAppBar(
             maxLines = 1,
             color = { titleColor },
             style = MaterialTheme.typography.titleMedium,
-            autoSize =
-              TextAutoSize.StepBased(minFontSize = 14.sp, maxFontSize = 16.sp, stepSize = 1.sp),
+            autoSize = TextAutoSize.StepBased(minFontSize = 14.sp, maxFontSize = 16.sp, stepSize = 1.sp),
           )
         }
         if (subtitle.isNotEmpty()) {
-          Text(
-            subtitle,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.secondary,
-          )
+          Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
         }
       }
     },
     modifier = modifier,
     scrollBehavior = scrollBehavior,
-    // The button at the left.
     navigationIcon = {
       when (leftAction?.actionType) {
-        AppBarActionType.NAVIGATE_UP -> {
-          IconButton(onClick = leftAction.actionFn) {
-            Icon(
-              imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-              contentDescription = stringResource(R.string.cd_navigate_back_icon),
-            )
-          }
+        AppBarActionType.NAVIGATE_UP -> IconButton(onClick = leftAction.actionFn) {
+          Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(com.trace.app.R.string.cd_navigate_back_icon))
         }
-        AppBarActionType.MENU -> {
-          IconButton(onClick = leftAction.actionFn) {
-            Icon(
-              imageVector = Icons.Rounded.Menu,
-              contentDescription = stringResource(R.string.cd_menu),
-            )
-          }
+        AppBarActionType.MENU -> IconButton(onClick = leftAction.actionFn) {
+          Icon(Icons.Rounded.Menu, contentDescription = stringResource(com.trace.app.R.string.cd_menu))
         }
-
         else -> {}
       }
     },
-    // The "action" component at the right.
     actions = {
       when (rightAction?.actionType) {
-        // Click an icon to open "app setting".
-        AppBarActionType.APP_SETTING -> {
-          IconButton(onClick = rightAction.actionFn) {
-            Icon(
-              imageVector = Icons.Rounded.Settings,
-              contentDescription = stringResource(R.string.cd_app_settings_icon),
-              tint = MaterialTheme.colorScheme.onSurface,
-            )
-          }
+        AppBarActionType.APP_SETTING -> IconButton(onClick = rightAction.actionFn) {
+          Icon(Icons.Rounded.Settings, contentDescription = stringResource(com.trace.app.R.string.cd_app_settings_icon), tint = MaterialTheme.colorScheme.onSurface)
         }
-
-        // Click a button to navigate up.
-        AppBarActionType.NAVIGATE_UP -> {
-          TextButton(onClick = rightAction.actionFn) { Text("Done") }
-        }
-
+        AppBarActionType.NAVIGATE_UP -> TextButton(onClick = rightAction.actionFn) { Text("Done") }
         else -> {}
       }
     },

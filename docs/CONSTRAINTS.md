@@ -56,10 +56,9 @@ new entry in `/DECISIONS.md` explaining why.
 
 - **Phone only. No external hardware.** No Raspberry Pi, no Jetson, no ESP32, no companion devices. If a
   feature seems to require external compute, it's out of scope, not a reason to add hardware.
-- **Kotlin is the default language for all app code.** Rust is permitted only for the Qdrant Edge
-  integration, isolated behind a JNI boundary. If Rust/JNI integration is not working reliably by the
-  date set in `/ROADMAP.md` Phase 3, fall back to a pure-Kotlin on-device vector search option rather
-  than continuing to fight the JNI bridge under time pressure.
+- **Kotlin is the app language.** The planned Qdrant Edge/Rust JNI path was rejected during Phase 3;
+  Trace ships a pure-Kotlin on-device vector search instead. Do not introduce Rust/JNI without an
+  explicit new decision.
 
 ## Positioning discipline
 

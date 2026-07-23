@@ -19,8 +19,8 @@ Intent Router (lightweight)
                                     |                                |
                             Screen capture                   Notes/file query
                             (MediaProjection)                       |
-                                    |                     Qdrant Edge vector search
-                                    |                     (Rust crate via JNI)
+                                    |                     On-device semantic retrieval
+                                    |                     (USE embeddings + Kotlin cosine store)
                                     |                                |
                                     |                     Retrieved chunks -> Gemma
                                     +----------------+----------------+
@@ -66,21 +66,22 @@ See `/CONSTRAINTS.md` for why this and not AccessibilityService. Captures the cu
 passed to Gemma's vision path alongside the spoken question.
 
 ### Voice pipeline
-Gemma 4 E2B's native audio encoder handles ASR directly — no separate Whisper/STT stage. This is a
-deliberate architectural choice: Gemma's audio tokens feed into the same forward pass as vision and text,
-enabling joint reasoning (e.g., a spoken question that references what's currently visible) that a
-pipelined STT-then-LLM approach can't do as cleanly. TTS handles the spoken response side.
+Push-to-talk uses Android `SpeechRecognizer` for transcription, then sends the resulting text through
+the same intent-routing and Gemma generation path as typed input. `InteractionOrigin` preserves whether
+the turn came from voice so TTS speaks only voice-originated responses. TTS selects an installed local
+voice where available, keeping the core path usable offline.
 
-### Retrieval layer — Qdrant Edge (RAG Module)
-In-process, no-server, embedded vector search engine. Used specifically for the RAG module. 
+### Retrieval layer — on-device Kotlin RAG (Notes module)
+The shipped retrieval implementation is a pure-Kotlin, in-process cosine store backed by MediaPipe
+`TextEmbedder` and the bundled Universal Sentence Encoder model. It replaced the planned Qdrant Edge
+Rust/JNI bridge after the Phase 3 go/no-go: at explicit-attachment scale (tens to low hundreds of
+chunks), brute-force retrieval is simpler, fast enough, and materially lower risk.
 **Important Ingestion Clarification:** RAG ingestion is strictly via files the user explicitly attaches through AI Chat or selects directly from the device. It never performs a background search of device storage. This means the scoped-storage limitations documented for the old File Fetch feature do not apply to RAG.
 Notes are OCR'd (via Gemma vision) and embedded once, then indexed locally. A voice query like "quiz me on my DBMS notes" triggers a real semantic retrieval over indexed chunks, and Gemma generates the quiz/summary grounded in what's actually retrieved.
 
-- Only available as Python bindings or a Rust crate — no native Kotlin/JNI package exists. Integration
-  path: compile the Rust crate for Android, expose a small, contained JNI boundary to Kotlin (index
-  document, query top-k, done). This is the single highest-risk technical integration in the project —
-  see `/ROADMAP.md` Phase 3 for the validation gate and fallback plan.
-- Storage: local directory on disk (Edge Shard), disk-backed, offline-capable, no background service.
+- Extracted source text and its embeddings are persisted in a local proto DataStore. On launch the
+  vectors are restored directly; legacy text-only sources re-embed once. Retrieval never scans device
+  storage in the background and has no server or background service.
 
 ### Semantic File Matcher (Demo Fallback)
 When exact file matches fail, a user-configurable semantic fallback runs (using Gemma vision to classify image candidates). Due to Android 13+ scoped storage limitations, fetching general files (e.g. PDFs) directly from shared storage without a user picker is heavily restricted. Thus, voice-fetch (and the semantic fallback) operates strictly on images from MediaStore and accessible user directories (e.g., Downloads, Screenshots). This scope is configurable in settings to balance thoroughness against the ~0.5s/image latency of the vision model.
