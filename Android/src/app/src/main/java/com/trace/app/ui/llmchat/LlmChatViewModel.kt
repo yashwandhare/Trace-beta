@@ -28,6 +28,8 @@ import com.trace.app.data.SystemPromptRepository
 import com.trace.app.data.Task
 import com.trace.app.proto.UserData
 import com.trace.app.runtime.runtimeHelper
+import com.trace.app.routing.RouterAction
+import com.trace.app.routing.RuleBasedRouter
 import com.trace.app.ui.common.chat.ChatMessageAudioClip
 import com.trace.app.ui.common.chat.ChatMessageError
 import com.trace.app.ui.common.chat.ChatMessageInfo
@@ -53,6 +55,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private const val TAG = "AGLlmChatViewModel"
 
@@ -342,6 +345,87 @@ open class LlmChatViewModelBase(
    * Calculator is checked first — its confidence gate is stricter, so a false DateTimeTool match
    * on an ambiguous input is the safer default to fall through on.
    */
+  fun tryHandleRuleBasedRouter(
+    context: Context,
+    model: Model,
+    input: String,
+    interactionOrigin: InteractionOrigin,
+    onFirstToken: (Model) -> Unit,
+    onDone: () -> Unit,
+    onError: (String) -> Unit,
+    onRequestScreenCapture: (String, Boolean) -> Unit
+  ): Boolean {
+    val call = RuleBasedRouter.parse(input) ?: return false
+
+    viewModelScope.launch(Dispatchers.Default) {
+      setInProgress(true)
+      when (call.action) {
+        RouterAction.FIND_FILE -> {
+          val query = call.arguments["query"] ?: ""
+          addMessage(model, ChatMessageLoading())
+          val handler = com.trace.app.filefetch.DefaultIntentFileFetchHandler(context)
+          val result = handler.handleFindFile(query)
+          removeLastMessageIfLoading(model)
+          if (result != null) {
+            addMessage(model, ChatMessageText(content = "Found file: ${result.displayName}\nPath: ${result.uri}", side = ChatSide.AGENT))
+            if (interactionOrigin == InteractionOrigin.VOICE) ttsManager?.speak("Found file ${result.displayName}")
+          } else {
+            addMessage(model, ChatMessageText(content = "Could not find file: $query", side = ChatSide.AGENT))
+            if (interactionOrigin == InteractionOrigin.VOICE) ttsManager?.speak("Could not find file")
+          }
+          setInProgress(false)
+          onDone()
+        }
+        RouterAction.SAVE_MEMORY -> {
+          val content = call.arguments["content"] ?: ""
+          addMessage(model, ChatMessageLoading())
+          memoryRepository?.add(title = "Remembered", body = content, source = com.trace.app.proto.MemorySource.MEMORY_SOURCE_MANUAL)
+          removeLastMessageIfLoading(model)
+          addMessage(model, ChatMessageText(content = "I'll remember that.", side = ChatSide.AGENT))
+          if (interactionOrigin == InteractionOrigin.VOICE) ttsManager?.speak("I'll remember that.")
+          setInProgress(false)
+          onDone()
+        }
+        RouterAction.CREATE_REMINDER -> {
+          val request = call.arguments["message"] ?: ""
+          addMessage(model, ChatMessageLoading())
+          createReminderFromRequest(model, request, onResult = { result ->
+            removeLastMessageIfLoading(model)
+            val msg = when (result) {
+              is com.trace.app.memory.ScheduleExtractor.Result.Scheduled -> "Reminder set!"
+              is com.trace.app.memory.ScheduleExtractor.Result.Failed -> "Failed to set reminder: ${result.reason}"
+              is com.trace.app.memory.ScheduleExtractor.Result.NoSchedule -> "I couldn't understand what time to set the reminder for."
+            }
+            addMessage(model, ChatMessageText(content = msg, side = ChatSide.AGENT))
+            if (interactionOrigin == InteractionOrigin.VOICE) ttsManager?.speak(msg)
+            setInProgress(false)
+            onDone()
+          })
+        }
+        RouterAction.SEARCH_WEB -> {
+          val query = call.arguments["query"] ?: ""
+          setInProgress(false)
+          tryHandleWebSearch(model, "websearch $query", enabled = true, onFirstToken, onDone, onError, interactionOrigin)
+        }
+        RouterAction.EXPLAIN_SCREEN -> {
+          val query = call.arguments["query"] ?: "Describe this screen"
+          removeLastMessageIfLoading(model)
+          setInProgress(false)
+          withContext(Dispatchers.Main) {
+            onRequestScreenCapture(query, interactionOrigin == InteractionOrigin.VOICE)
+            onDone()
+          }
+        }
+        else -> {
+          removeLastMessageIfLoading(model)
+          setInProgress(false)
+          onDone()
+        }
+      }
+    }
+    return true
+  }
+
   fun tryHandleQuickTools(
     model: Model,
     input: String,

@@ -192,10 +192,35 @@ fun ChatViewWrapper(
         val ragOrigin =
           if (audioMessages.isNotEmpty() || chatMessageText?.data == InteractionOrigin.VOICE)
             InteractionOrigin.VOICE else InteractionOrigin.TEXT
+        val handledByRuleBasedRouter =
+          text.isNotEmpty() &&
+            (viewModel as? LlmChatViewModel)?.tryHandleRuleBasedRouter(
+              context = context,
+              model = model,
+              input = text,
+              interactionOrigin = ragOrigin,
+              onFirstToken = onFirstToken,
+              onDone = { onGenerateResponseDone(model) },
+              onError = { errorMessage ->
+                viewModel.handleError(
+                  context = context,
+                  task = task,
+                  model = model,
+                  errorMessage = errorMessage,
+                  modelManagerViewModel = modelManagerViewModel,
+                )
+              },
+              onRequestScreenCapture = { query, isVoice ->
+                // Basic stub for screen explain support in Phase 4
+                Log.d(TAG, "Screen explain requested: $query")
+              }
+            ) == true
+
         // Deterministic calendar/calculator: a clear date/time or math question is answered
         // directly from Kotlin, skipping the model entirely (see tryHandleQuickTools). Checked
         // first — always-on and local, so it takes priority over the opt-in web search path.
         val handledByTools =
+          !handledByRuleBasedRouter &&
           text.isNotEmpty() &&
             viewModel.tryHandleQuickTools(
               model = model,
@@ -207,7 +232,7 @@ fun ChatViewWrapper(
         // toggle is on) fetches results, grounds the prompt, and generates. When
         // off or keyword-absent this returns false and normal flow continues.
         val handledByWebSearch =
-          !handledByTools &&
+          !handledByRuleBasedRouter && !handledByTools &&
             text.isNotEmpty() &&
             viewModel.tryHandleWebSearch(
               model = model,
@@ -229,7 +254,7 @@ fun ChatViewWrapper(
         // If this is a "quiz me / summarize my notes" request, RAG handles it and
         // we skip normal generation.
         val handledByRag =
-          !handledByTools && !handledByWebSearch &&
+          !handledByRuleBasedRouter && !handledByTools && !handledByWebSearch &&
             text.isNotEmpty() &&
             viewModel.tryHandleRagQuery(
               model = model,
@@ -237,7 +262,7 @@ fun ChatViewWrapper(
               interactionOrigin = ragOrigin,
               onDone = { onGenerateResponseDone(model) },
             )
-        if (!handledByTools && !handledByWebSearch && !handledByRag) {
+        if (!handledByRuleBasedRouter && !handledByTools && !handledByWebSearch && !handledByRag) {
         viewModel.generateResponse(
           model = model,
           input = text,
@@ -259,7 +284,7 @@ fun ChatViewWrapper(
           // Determine origin: audio clip messages = voice, OR if the text message is marked as STT.
           interactionOrigin = if (audioMessages.isNotEmpty() || chatMessageText?.data == InteractionOrigin.VOICE) InteractionOrigin.VOICE else InteractionOrigin.TEXT,
         )
-        } // end if (!handledByTools && !handledByWebSearch && !handledByRag)
+        } // end if (!handledByRuleBasedRouter && !handledByTools && !handledByWebSearch && !handledByRag)
         val activeSkills = getActiveSkills()
         Log.d(
           TAG,
