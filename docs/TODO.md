@@ -181,3 +181,33 @@ surfaces still need final device QA and polish on the demo build.)
 
 ## Logistics (either dev, not code)
 - [ ] Confirm Kaggle submission format/requirements ahead of time
+
+---
+
+## PENDING: Dev-B — Intent Router & Memory/Schedules Hardening
+(Status: queued — do NOT begin until owner gives the go-ahead. Work only on `dev-2`; never push to `main`.)
+
+### 1. Improve the intent router
+- [ ] Audit the current `IntentRouter` + `RuleBasedRouter` for gaps, false positives, and missed natural phrasings.
+- [ ] Make routing as smart as possible without an NLP model (rule/keyword/regex-based, tolerant of near-natural-language commands).
+- [ ] Ensure typed and voice paths route identically.
+
+### 2. Device-control actions via the intent router
+- [ ] Flashlight on/off
+- [ ] Wi-Fi toggle
+- [ ] Bluetooth toggle
+- [ ] Open an app by name
+- [ ] (Scope guard: keep confirmation-gating for any externally-visible or state-changing action per `/CONSTRAINTS.md`.)
+
+### 3. Near-natural-language command tolerance
+- [ ] Accept variations like "turn the torch on", "switch on flashlight", "can you open whatsapp", "kill bluetooth", etc.
+- [ ] No NLP model — stay deterministic, but be as forgiving as a rule-based router can be.
+
+### 4. Schedule & Memory bug fixes
+- [ ] Audit Memory store + Schedule backend + MemoryScheduleScreen for UX/correctness bugs.
+- [ ] Make Memory/Schedules as good as possible for an end user (reliability, clarity, edge cases).
+- [ ] Verify reminder creation, persistence across reboot, cancellation, edit re-arm, and empty/error states.
+
+### 5. Branch hygiene
+- [ ] All of the above stays on `dev-2` only. Do not push to `main`.
+
